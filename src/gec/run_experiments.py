@@ -42,6 +42,9 @@ PLANS: dict[str, list[str]] = {
     "e3": ["e3_synthetic", "e3_real", "e3_mixed", "e3_synth2real"],
     "e4": ["e4_synthetic_matched", "e4_mixed_matched"],
     "smoke": ["e0_copy", "e3_mixed"],
+    # e5 is evaluation-only: it has no configs of its own, it re-scores
+    # existing E3/E4 checkpoints on the Indian English split. See run_e5().
+    "e5": [],
 }
 #: Plans whose configs reference ${select.*} and so need an earlier plan's
 #: selection.json to exist first.
@@ -255,6 +258,49 @@ def run_job(job: Job, force: bool = False) -> dict:
     return metrics
 
 
+def run_e5(seeds: list[int], force: bool = False) -> int:
+    """E5: evaluate every existing E3/E4 model on the Indian English split.
+
+    Evaluation only - no training. Normally unnecessary, because E3/E4 configs
+    list ``indian`` in ``eval.splits`` and so predict it in the same invocation
+    as ``test``. This exists for the case the spec's schedule makes likely: the
+    models were trained before the group finished writing the sentences.
+    """
+    from gec import evaluate, predict
+
+    if (paths.PROCESSED / "indian.skip").exists():
+        skip = paths.read_json(paths.PROCESSED / "indian.skip")
+        print(f"[run] E5 skipped: {skip.get('reason')}")
+        return 0
+    if not paths.split_files("indian")["src"].exists():
+        print("[run] E5 skipped: data/processed/indian.src.txt is missing. Run:\n"
+              "    python -m gec.prepare_data --indian")
+        return 0
+
+    targets: list[Path] = []
+    for pattern in ("e3_*", "e4_*"):
+        for d in sorted(paths.RUNS.glob(f"{pattern}/seed*")):
+            if (d / "model" / "config.json").exists():
+                targets.append(d)
+    if not targets:
+        print("[run] E5: no E3/E4 checkpoint found yet; nothing to evaluate.")
+        return 0
+
+    import yaml
+
+    failures = 0
+    for run in targets:
+        print(f"\n[run] E5 on {paths.rel(run)}")
+        try:
+            cfg = yaml.safe_load(paths.read_text(run / "config.yaml"))
+            predict.predict_split(run, "indian", cfg, force=force)
+            evaluate.evaluate_run(run, splits=["indian"], force=force)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[run] E5 failed for {paths.rel(run)}: {type(exc).__name__}: {exc}")
+            failures += 1
+    return failures
+
+
 def timing_probe(plan: str, seed: int = 13, steps: int = 150, n_pred: int = 300) -> dict:
     """Measure throughput cheaply, so the budget stops being guesswork.
 
@@ -392,6 +438,9 @@ def main(argv: list[str] | None = None) -> int:
         timing_probe(args.plan if args.plan != "all" else "e1", seed=seeds[0])
         print("\nNext: re-run with --dry-run to see estimates based on these measurements.")
         return 0
+
+    if args.plan == "e5":
+        return 1 if run_e5(seeds, force=args.force) else 0
 
     plans = ["e0", "e1", "e2", "e3", "e4"] if args.plan == "all" else [args.plan]
 

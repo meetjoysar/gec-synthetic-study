@@ -1,0 +1,29 @@
+# Which checkpoint backs each demo column.
+#
+# A missing path is not an error: that column renders "Not trained yet" with the
+# command that would produce it, and the demo still starts and works with the
+# other columns (spec section 10, Phase 10 requires graceful fallback).
+#
+# Paths are relative to the repo root.
+
+models:
+  "Synthetic-only": results/runs/e3_synthetic/seed13/model
+  "Real-only": results/runs/e3_real/seed13/model
+  "Mixed": results/runs/e3_mixed/seed13/model
+
+device: auto        # auto | cuda | cpu
+num_beams: 4
+max_new_tokens: 128
+
+# 8 example buttons (spec section 12). The Indian English ones are drawn ONLY
+# from the EXAMPLE- rows of data_manual/indian_english_test.tsv, never from the
+# group's real test sentences, so the demo cannot leak the evaluation set.
+examples:
+  - "He go to school yesterday and buy a apple."
+  - "She have been study English since three years."
+  - "The informations in this reports is not correct."
+  - "I am agree with you about this problem, but i think different."
+  - "He is working here since 2019."
+  - "We discussed about the plan."
+  - "I am having two brothers."
+  - "What is your good name?"
