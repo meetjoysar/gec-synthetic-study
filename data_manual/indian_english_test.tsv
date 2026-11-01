@@ -1,0 +1,6 @@
+id	source	annotator1	annotator2	category	notes
+EXAMPLE-001	He is working here since 2019.	He has been working here since 2019.	He has been working here since 2019.	tense-perfect	EXAMPLE row written by Claude Code; excluded from evaluation. "since + time" needs present perfect continuous.
+EXAMPLE-002	We discussed about the plan.	We discussed the plan.	We discussed the plan.	redundancy	EXAMPLE row written by Claude Code; excluded from evaluation. "discuss" is transitive in standard English.
+EXAMPLE-003	I am having two brothers.	I have two brothers.	I have two brothers.	stative-progressive	EXAMPLE row written by Claude Code; excluded from evaluation. "have" as possession is stative.
+EXAMPLE-004	Please revert back to me soon.	Please reply to me soon.	Please get back to me soon.	dialect-usage	EXAMPLE row written by Claude Code; excluded from evaluation. Annotators disagree here, which is fine and expected.
+EXAMPLE-005	What is your good name?	What is your name?	What is your name?	redundancy	EXAMPLE row written by Claude Code; excluded from evaluation.

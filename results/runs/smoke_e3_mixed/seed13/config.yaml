@@ -1,0 +1,82 @@
+alias_of: null
+condition: mixed
+data:
+  synthetic_n: 300
+  val_size: 50
+dataloader_num_workers: 0
+dataset:
+  real:
+    enabled: true
+    n: 300
+  shuffle: true
+  synthetic:
+    clean_ratio: 0.0
+    enabled: true
+    n: null
+    p: 0.2
+    weights: null
+    weights_file: null
+description: 'E3(c) mixed: real + synthetic, shuffled with the run seed. The realised
+  ratio is NOT 50/50 (about 52% real at n=30000) and the stats file records the true
+  proportion, which the report must state.
+
+  '
+device: cpu
+epochs: 1
+eval:
+  limit: 50
+  selection_metric: val.f05
+  splits:
+  - val
+  - test
+eval_batch_size: 8
+family: e3
+generation:
+  max_new_tokens: 32
+  num_beams: 1
+generator:
+  weights:
+    case: 0.03
+    det_delete: 0.06
+    det_insert: 0.05
+    det_swap: 0.05
+    noun_num: 0.1
+    prep_delete: 0.07
+    prep_swap: 0.09
+    punct_delete: 0.06
+    punct_insert: 0.04
+    spell: 0.08
+    sva: 0.1
+    verb_form: 0.08
+    verb_tense: 0.1
+    word_delete: 0.05
+    word_dup: 0.04
+gradient_accumulation_steps: 1
+group_by_length: false
+keep_checkpoint: false
+learning_rate: 0.0003
+max_source_len: 128
+max_steps: 20
+max_target_len: 128
+model_name: t5-small
+name: e3_mixed
+precision: fp32
+predict_max_source_len: 192
+prefix: 'grammar: '
+run_prefix: smoke_
+seed: 13
+seeds:
+- 13
+- 42
+- 2026
+stage2:
+  dataset: real
+  enabled: false
+  epochs: null
+  init_from: null
+  learning_rate: null
+stage2_epochs: 1
+stage2_learning_rate: 0.0001
+train_batch_size: 4
+warmup_ratio: 0.05
+weight_decay: 0.01

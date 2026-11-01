@@ -136,27 +136,39 @@ def write_text(p: Path | str, s: str) -> None:
         fh.write(s)
 
 
-def write_lines(p: Path | str, lines: Iterable[str]) -> int:
+def write_lines(p: Path | str, lines: Iterable[str], allow_blank: bool = False) -> int:
     """Write one line per item, UTF-8 and LF, and return the count.
+
+    Parameters
+    ----------
+    allow_blank
+        Permit empty lines. **Only** for files that never reach ERRANT as an
+        ``-orig`` or ``-cor`` argument - in practice just ``<split>.tgt.txt``,
+        where a blank line is real data: a handful of W&I annotations delete an
+        entire sentence (junk input like ``fsdjgdofg``, or a fragment merged
+        into its neighbour), so the annotator-0 target is genuinely empty.
+        ``tgt.txt`` must stay line-parallel with ``src.txt``, so those lines are
+        kept blank rather than dropped or invented.
 
     Raises
     ------
     ValueError
-        If any line is empty or whitespace-only, or contains an embedded
-        newline. ERRANT's ``parallel_to_m2`` silently skips blank source lines
-        (``if not orig: continue``), which desynchronises the M2 files and later
-        trips ``compare_m2``'s messageless length assertion. Failing here, at
-        the write, is far cheaper to diagnose.
+        If a line is empty (and ``allow_blank`` is False) or contains an
+        embedded newline. ERRANT's ``parallel_to_m2`` silently skips blank
+        source lines (``if not orig: continue``), which desynchronises the M2
+        files and later trips ``compare_m2``'s messageless length assertion.
+        Failing here, at the write, is far cheaper to diagnose.
     """
     p = Path(p)
     p.parent.mkdir(parents=True, exist_ok=True)
     out = list(lines)
     for i, line in enumerate(out):
-        if not line or not line.strip():
+        if not allow_blank and (not line or not line.strip()):
             raise ValueError(
                 f"{p}: line {i + 1} is empty or whitespace-only. ERRANT's "
                 "parallel_to_m2 skips blank lines, which would desynchronise "
-                "the hypothesis and reference M2 files."
+                "the hypothesis and reference M2 files. If this file never "
+                "reaches ERRANT (e.g. a .tgt.txt), pass allow_blank=True."
             )
         if "\n" in line or "\r" in line:
             raise ValueError(f"{p}: line {i + 1} has an embedded newline: {line!r}")

@@ -1,0 +1,68 @@
+{
+  "_meta": {
+    "complete": true,
+    "errant_version": "3.0.2",
+    "schema": 1,
+    "written_at": "2026-11-01T18:14:14Z"
+  },
+  "condition": "copy",
+  "run": "e0_copy",
+  "seed": 13,
+  "selection_metric": {
+    "name": "f05",
+    "split": "val",
+    "value": 0.0
+  },
+  "splits": {
+    "test": {
+      "avg_edits_per_sentence": 0.0,
+      "bleu_13a": 70.1376,
+      "bleu_tok": 70.3603,
+      "copy_rate": 1.0,
+      "cross_check_delta": 0.0,
+      "errant": {
+        "f05": 0.0,
+        "fn": 112,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 0.0,
+        "tp": 0
+      },
+      "errant_raw_log": "results/runs/smoke_e0_copy/seed13/logs/errant_compare.test.txt",
+      "eval_seconds": 10.6,
+      "n": 50,
+      "n_bleu_excluded": 0,
+      "n_clean": 9,
+      "n_clean_changed": 0,
+      "n_refs": 1,
+      "over_correction_rate": 0.0,
+      "per_category_csv": "results/runs/smoke_e0_copy/seed13/predictions/test.per_category.csv",
+      "reference_m2": "results/runs/smoke_e0_copy/seed13/predictions/test.ref.m2"
+    },
+    "val": {
+      "avg_edits_per_sentence": 0.0,
+      "bleu_13a": 73.3628,
+      "bleu_tok": 72.5953,
+      "copy_rate": 1.0,
+      "cross_check_delta": 0.0,
+      "errant": {
+        "f05": 0.0,
+        "fn": 119,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 0.0,
+        "tp": 0
+      },
+      "errant_raw_log": "results/runs/smoke_e0_copy/seed13/logs/errant_compare.val.txt",
+      "eval_seconds": 10.8,
+      "n": 50,
+      "n_bleu_excluded": 0,
+      "n_clean": 17,
+      "n_clean_changed": 0,
+      "n_refs": 1,
+      "over_correction_rate": 0.0,
+      "per_category_csv": "results/runs/smoke_e0_copy/seed13/predictions/val.per_category.csv",
+      "reference_m2": "results/runs/smoke_e0_copy/seed13/predictions/val.ref.m2"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "best_val_loss": 0.632386,
+  "copy_rate": 0.0417,
+  "device": "cpu",
+  "effective_batch_size": 4,
+  "empty_pred_rate": 0.0,
+  "epochs": 1.0,
+  "examples_per_s": 46.48,
+  "final_train_loss": 0.825788,
+  "n_probe": 24,
+  "n_train": 600,
+  "n_truncated_src": 0,
+  "n_truncated_tgt": 0,
+  "n_val": 50,
+  "peak_vram_mb": 0.0,
+  "precision": "fp32",
+  "run": "smoke_e3_mixed",
+  "s_per_step": 0.6454,
+  "seed": 13,
+  "stage": 1,
+  "steps": 20,
+  "suspect": false,
+  "train_jsonl": "data/processed/syn300_p0.2_clean0.0_real300_s13_6295fafc.jsonl",
+  "val_loss_per_epoch": [
+    0.632386
+  ],
+  "wall_clock_s": 12.9
+}

@@ -1,0 +1,102 @@
+# Base configuration (spec section 8.1), plus the keys this implementation needs.
+# Experiment YAMLs in configs/experiments/ are deep-merged over this file, then
+# configs/plans/<plan>.yaml, then any --set key.path=value overrides.
+#
+# validate_config() rejects keys that are not present in this tree, so a typo
+# like `clean_ration: 0.33` fails loudly instead of silently doing nothing and
+# producing a duplicate run.
+
+# --- spec 8.1, verbatim ---
+model_name: t5-small
+prefix: "grammar: "
+max_source_len: 128
+max_target_len: 128
+learning_rate: 3.0e-4
+weight_decay: 0.01
+warmup_ratio: 0.05
+train_batch_size: 8          # see gradient_accumulation_steps: 8 x 4 = 32 effective
+eval_batch_size: 16          # x4 beams = 64 sequences in flight on a 4 GB card
+epochs: 2                    # DEVIATION D4 from spec's 3 - trimmed GPU budget
+stage2_epochs: 2             # synth->real second stage
+stage2_learning_rate: 1.0e-4
+precision: auto              # fp32, or bf16 when compute capability >= 8.0. NEVER fp16 for T5.
+generation:
+  num_beams: 4
+  max_new_tokens: 128
+keep_checkpoint: true        # local disk is ample (151 GB); Colab sets false
+seeds: [13, 42, 2026]
+data:
+  synthetic_n: 30000         # DEVIATION D4 from spec's 50000 - trimmed GPU budget
+  val_size: 2000
+
+# --- additions beyond spec 8.1 ---
+device: auto                 # auto | cuda | cpu
+gradient_accumulation_steps: 4
+max_steps: null              # null = train for `epochs`; the smoke plan sets 20
+run_prefix: ""               # the smoke plan sets "smoke_" so results never
+                             # reach a report table (aggregate skips the prefix)
+
+# Predict-time source length is deliberately LONGER than training's 128.
+# Truncating a *test* source invents end-of-sentence deletions and depresses
+# F0.5 for a reason unrelated to the research question. T5's relative position
+# embeddings extrapolate fine.
+predict_max_source_len: 192
+
+dataloader_num_workers: 0    # Windows spawn semantics make workers a net loss
+group_by_length: true        # the single biggest speedup: cuts padding FLOPs ~2x
+
+eval:
+  splits: [val, test]
+  limit: null                # the smoke plan sets 50
+  selection_metric: val.f05
+
+# The generator's 15 operations (spec section 6.2). Per-op values are chosen so
+# the totals are roughly uniform ACROSS the 10 ERRANT categories, which is what
+# spec 6.2 asks for and what gives E4 somewhere to move from:
+#   DET 0.16 (3 ops) | PREP 0.16 (2) | VERB:SVA 0.10 | VERB:TENSE 0.10
+#   VERB:FORM 0.08   | NOUN:NUM 0.10 | SPELL 0.08    | PUNCT 0.10 (2)
+#   OTHER 0.09 (2)   | ORTH 0.03
+generator:
+  weights:
+    det_delete: 0.06
+    det_insert: 0.05
+    det_swap: 0.05
+    prep_swap: 0.09
+    prep_delete: 0.07
+    sva: 0.10
+    verb_tense: 0.10
+    verb_form: 0.08
+    noun_num: 0.10
+    spell: 0.08
+    punct_delete: 0.06
+    punct_insert: 0.04
+    word_delete: 0.05
+    word_dup: 0.04
+    case: 0.03
+
+# Filled in by each experiment YAML.
+name: null
+family: null
+condition: null              # synthetic | real | mixed | synth2real | copy
+description: ""
+alias_of: null               # e.g. e2_clean0.0 -> e1_p0.2 (reuse, never retrain)
+
+dataset:
+  synthetic:
+    enabled: false
+    n: null                  # null -> data.synthetic_n
+    p: 0.2
+    clean_ratio: 0.0
+    weights: null            # null -> generator.weights
+    weights_file: null       # or configs/experiments/e4_matched_weights.yaml
+  real:
+    enabled: false
+    n: null                  # null -> all of train_real
+  shuffle: true
+
+stage2:
+  enabled: false
+  init_from: null            # e.g. "e3_synthetic/seed{seed}" - {seed} is substituted
+  dataset: real
+  epochs: null               # null -> stage2_epochs
+  learning_rate: null        # null -> stage2_learning_rate

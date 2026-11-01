@@ -1,0 +1,14 @@
+{
+  "batch_size": 0,
+  "copy_rate": 1.0,
+  "device": "none",
+  "ms_per_sentence": 0.0,
+  "n": 50,
+  "n_empty_repaired": 0,
+  "n_truncated": 0,
+  "num_beams": 0,
+  "precision": "none",
+  "sentences_per_s": null,
+  "split": "test",
+  "wall_clock_s": 0.0
+}

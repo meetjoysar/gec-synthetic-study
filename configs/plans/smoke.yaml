@@ -1,0 +1,47 @@
+# Smoke plan (spec section 8.3): the whole pipeline on CPU in a few minutes.
+# MUST pass before any GPU run.
+#
+# Applied as config layer 3, on top of whatever experiment config is running.
+#
+# `run_prefix: "smoke_"` is the important key: results land in
+# results/runs/smoke_<name>/seed<k>/, and aggregate.collect_runs skips anything
+# with that prefix. A smoke test therefore can never contaminate a report table.
+
+run_prefix: "smoke_"
+device: cpu
+precision: fp32
+max_steps: 20
+epochs: 1
+stage2_epochs: 1
+train_batch_size: 4
+eval_batch_size: 8
+gradient_accumulation_steps: 1
+keep_checkpoint: false
+group_by_length: false      # pointless at 300 examples, and adds a length pass
+
+data:
+  synthetic_n: 300
+  val_size: 50
+
+# Pin the generator settings explicitly. The E2/E3/E4 configs normally write
+# ${select.e1_best_p}, which cannot resolve until E1 has actually run - and the
+# smoke test must work on a clean checkout, before any experiment exists.
+# This layer is merged BEFORE reference resolution, so it replaces the refs.
+dataset:
+  synthetic:
+    p: 0.2
+    clean_ratio: 0.0
+  real:
+    n: 300                  # otherwise a "mixed" smoke run tokenises all
+                            # 32,308 real sentences just to take 20 steps
+alias_of: null              # never alias during a smoke test; train for real
+
+eval:
+  splits: [val, test]
+  limit: 50                 # slices 50 sentences AND writes a matching 50-block
+                            # reference M2 into the run dir, which is why
+                            # evaluate.reference_m2 prefers a run-local file
+
+generation:
+  num_beams: 1
+  max_new_tokens: 32
