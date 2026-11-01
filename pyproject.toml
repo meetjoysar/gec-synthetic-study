@@ -1,0 +1,21 @@
+[project]
+name = "gec-synthetic-study"
+version = "0.1.0"
+description = "Fake Errors, Real Grammar: synthetic vs real vs mixed data for T5 grammatical error correction"
+requires-python = ">=3.10,<3.12"
+
+[tool.pytest.ini_options]
+# `src` on the path means `python -m gec.<module>` and `import gec` both work
+# without an editable install, which keeps the Colab setup to a git clone.
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "slow: needs a real download, a GPU, or more than a few seconds",
+    "needs_data: needs data/processed to be populated by prepare_data",
+    "needs_errant: shells out to ERRANT (a few seconds per call)",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:spacy.*",
+    "ignore::FutureWarning:transformers.*",
+]

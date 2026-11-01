@@ -1,0 +1,45 @@
+# ---- data and models (never committed) ----
+data/
+models/
+*.tar.gz
+*.zip
+
+# ---- results: keep tables/figures/markdown, drop weights and bulky predictions ----
+results/runs/*/*/model/
+results/runs/*/*/checkpoint*/
+results/runs/*/*/predictions/*.txt
+results/runs/*/*/predictions/*.m2
+results/runs/_timing.jsonl
+results/e4_matching/
+!results/runs/*/*/metrics.json
+!results/runs/*/*/config.yaml
+!results/runs/*/*/env.json
+!results/runs/*/*/train_metrics.json
+!results/runs/*/*/predict_meta.json
+!results/runs/*/*/predictions/*.csv
+
+# ---- environments ----
+.venv/
+.venv-gec/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ---- caches ----
+.hf_cache/
+.cache/
+*.spacy
+
+# ---- course PDFs: kept on disk, not in git (third-party copyright; cited in CREDITS.md) ----
+*.pdf
+
+# ---- scratch ----
+.extract/
+scratch/
+*.log
+~$*
+Thumbs.db
+desktop.ini

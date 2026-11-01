@@ -1,0 +1,10 @@
+# Keep LF in every tracked text file. CRLF in an M2 file breaks ERRANT's
+# compare_m2, which splits blocks on "\n\n".
+* text=auto eol=lf
+*.m2 text eol=lf
+*.tsv text eol=lf
+*.txt text eol=lf
+*.jsonl text eol=lf
+*.ipynb text eol=lf
+*.png binary
+*.pdf binary
