@@ -11,6 +11,10 @@ results/runs/*/*/predictions/*.txt
 results/runs/*/*/predictions/*.m2
 results/runs/_timing.jsonl
 results/e4_matching/
+# smoke and timing-probe runs are throwaway; they must never reach a report
+# table (aggregate skips them by prefix) and have no business in git either.
+results/runs/smoke_*/
+results/runs/probe_*/
 !results/runs/*/*/metrics.json
 !results/runs/*/*/config.yaml
 !results/runs/*/*/env.json
