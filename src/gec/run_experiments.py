@@ -79,6 +79,7 @@ def iter_jobs(
     seeds: list[int],
     only: list[str] | None = None,
     resolve: bool = True,
+    overrides: list[str] | None = None,
 ) -> list[Job]:
     """Expand a plan into concrete jobs."""
     if plan not in PLANS:
@@ -95,6 +96,7 @@ def iter_jobs(
             cfg = cfgmod.load_config(
                 paths.EXPERIMENTS / f"{name}.yaml",
                 plan="smoke" if plan == "smoke" else None,
+                overrides=overrides,
                 seed=seed,
                 resolve=resolve,
             )
@@ -143,7 +145,10 @@ def estimate_minutes(job: Job) -> tuple[float, str]:
 
     from gec import build_datasets
 
-    spec = build_datasets.resolve_spec(job.cfg, job.seed)
+    try:
+        spec = build_datasets.resolve_spec(job.cfg, job.seed)
+    except cfgmod.ConfigError:
+        return 0.0, "blocked"
     n = 0
     if spec["synthetic"]["enabled"]:
         n += int(spec["synthetic"]["n"])
@@ -301,7 +306,14 @@ def run_e5(seeds: list[int], force: bool = False) -> int:
     return failures
 
 
-def timing_probe(plan: str, seed: int = 13, steps: int = 150, n_pred: int = 300) -> dict:
+def timing_probe(
+    plan: str,
+    seed: int = 13,
+    steps: int = 150,
+    n_pred: int = 300,
+    overrides: list[str] | None = None,
+    tag: str = "probe_",
+) -> dict:
     """Measure throughput cheaply, so the budget stops being guesswork.
 
     Trains the plan's first trainable config for *steps* steps and generates on
@@ -311,15 +323,16 @@ def timing_probe(plan: str, seed: int = 13, steps: int = 150, n_pred: int = 300)
     """
     from gec import predict, train
 
-    jobs = [j for j in iter_jobs(plan, [seed], resolve=False) if j.needs_train and not j.alias_of]
+    jobs = [j for j in iter_jobs(plan, [seed], resolve=False)
+            if j.needs_train and not j.alias_of]
     if not jobs:
         raise ValueError(f"plan {plan} has no trainable config to probe")
     job = jobs[0]
 
     cfg = cfgmod.load_config(
         paths.EXPERIMENTS / f"{job.config}.yaml",
-        overrides=[f"max_steps={steps}", "run_prefix=probe_", "keep_checkpoint=true",
-                   "eval.splits=[]"],
+        overrides=[f"max_steps={steps}", f"run_prefix={tag}", "keep_checkpoint=true",
+                   "eval.splits=[]", *(overrides or [])],
         seed=seed,
         resolve=False,
     )
@@ -361,6 +374,8 @@ def timing_probe(plan: str, seed: int = 13, steps: int = 150, n_pred: int = 300)
         "s_per_step": tm["s_per_step"],
         "examples_per_s": tm["examples_per_s"],
         "effective_batch_size": tm["effective_batch_size"],
+        "train_batch_size": cfg["train_batch_size"],
+        "gradient_accumulation_steps": cfg["gradient_accumulation_steps"],
         "peak_vram_mb": tm["peak_vram_mb"],
         "sentences_per_s_beam4": round(sent_per_s, 2),
         "eval_minutes": round(eval_minutes, 1),
@@ -392,7 +407,13 @@ def print_plan(jobs: list[Job], budget: float) -> float:
         if not desc:
             from gec import build_datasets
 
-            spec = build_datasets.resolve_spec(job.cfg, job.seed)
+            try:
+                spec = build_datasets.resolve_spec(job.cfg, job.seed)
+            except cfgmod.ConfigError as exc:
+                status = "blocked"
+                desc = str(exc).splitlines()[0]
+                print(f"{job.run:28s} {job.seed:>5d}  {status:8s} {'-':>8s}  {desc}")
+                continue
             bits = []
             if spec["synthetic"]["enabled"]:
                 bits.append(f"syn n={spec['synthetic']['n']} p={spec['synthetic']['p']} "
@@ -429,13 +450,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--yes", action="store_true", help="approve the estimated runtime")
     ap.add_argument("--force", action="store_true", help="re-run jobs that are already done")
     ap.add_argument("--continue-on-error", action="store_true")
+    ap.add_argument("--set", dest="overrides", nargs="*", default=None,
+                    help="config overrides, e.g. --set train_batch_size=16")
     args = ap.parse_args(argv)
 
     paths.ensure_dirs()
     seeds = args.seeds or DEFAULT_SEEDS
 
     if args.timing_probe:
-        timing_probe(args.plan if args.plan != "all" else "e1", seed=seeds[0])
+        timing_probe(args.plan if args.plan != "all" else "e1", seed=seeds[0],
+                     overrides=args.overrides)
         print("\nNext: re-run with --dry-run to see estimates based on these measurements.")
         return 0
 
@@ -456,7 +480,8 @@ def main(argv: list[str] | None = None) -> int:
         # earlier plan has run, so list it unresolved.
         resolve = plan not in NEEDS_SELECTION or cfgmod.selection_path().exists()
         try:
-            jobs = iter_jobs(plan, seeds, only=args.only, resolve=resolve)
+            jobs = iter_jobs(plan, seeds, only=args.only, resolve=resolve,
+                             overrides=args.overrides)
         except cfgmod.ConfigError as exc:
             print(f"\n[run] plan {plan} is blocked:\n{exc}")
             if len(plans) == 1:
@@ -489,7 +514,8 @@ def main(argv: list[str] | None = None) -> int:
             from gec import aggregate
 
             aggregate.write_selection()
-            jobs = iter_jobs(plan, seeds, only=args.only, resolve=True)
+            jobs = iter_jobs(plan, seeds, only=args.only, resolve=True,
+                             overrides=args.overrides)
 
         for job in jobs:
             status = job_status(job)

@@ -347,7 +347,22 @@ def train(cfg: dict, seed: int, run: Path | None = None) -> dict:
         "n_truncated_src": train_ds.n_truncated_src,
         "n_truncated_tgt": train_ds.n_truncated_tgt,
         "peak_vram_mb": repro.peak_vram_mb(),
-        "examples_per_s": round(len(rows) * args.num_train_epochs / wall, 2) if wall else None,
+        # Throughput must come from steps ACTUALLY taken, not from the dataset
+        # size times epochs: with max_steps set (the timing probe) training
+        # stops early, and the naive form over-reports by the ratio of the full
+        # epochs to the steps run - it read 1281 examples/s instead of ~103.
+        # This number drives every budget estimate, so it has to be right.
+        "examples_per_s": (
+            round(
+                trainer.state.global_step
+                * args.per_device_train_batch_size
+                * args.gradient_accumulation_steps
+                / wall,
+                2,
+            )
+            if wall and trainer.state.global_step
+            else None
+        ),
         "s_per_step": round(wall / max(trainer.state.global_step, 1), 4),
         "train_jsonl": paths.rel(train_jsonl),
     }

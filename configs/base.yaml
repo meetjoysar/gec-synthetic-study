@@ -14,8 +14,15 @@ max_target_len: 128
 learning_rate: 3.0e-4
 weight_decay: 0.01
 warmup_ratio: 0.05
-train_batch_size: 8          # see gradient_accumulation_steps: 8 x 4 = 32 effective
-eval_batch_size: 16          # x4 beams = 64 sequences in flight on a 4 GB card
+# MEASURED on the RTX 3050 (4 GB) by --timing-probe, not guessed:
+#   8 x 4  ->  96.9 examples/s, peak 1600 MB, 35.7 sentences/s (beam 4)
+#   16 x 2 -> 161.5 examples/s, peak 2117 MB, 50.8 sentences/s   <- chosen, 1.67x
+#   32 x 1 -> 187.7 examples/s, peak 3383 MB, 49.9 sentences/s
+# 32 x 1 is 16% faster still but leaves only ~700 MB of headroom on a GPU that
+# also drives the display, which is not a sensible trade over a multi-hour
+# campaign. 16 x 2 keeps the effective batch at the spec's 32.
+train_batch_size: 16
+eval_batch_size: 32
 epochs: 2                    # DEVIATION D4 from spec's 3 - trimmed GPU budget
 stage2_epochs: 2             # synth->real second stage
 stage2_learning_rate: 1.0e-4
@@ -31,7 +38,7 @@ data:
 
 # --- additions beyond spec 8.1 ---
 device: auto                 # auto | cuda | cpu
-gradient_accumulation_steps: 4
+gradient_accumulation_steps: 2   # 16 x 2 = 32 effective (spec 8.1)
 max_steps: null              # null = train for `epochs`; the smoke plan sets 20
 run_prefix: ""               # the smoke plan sets "smoke_" so results never
                              # reach a report table (aggregate skips the prefix)

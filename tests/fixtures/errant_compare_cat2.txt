@@ -1,0 +1,15 @@
+
+===================== Span-Based Correction ======================
+Category       TP       FP       FN       P        R        F0.5
+DET            1        0        0        1.0      1.0      1.0
+NOUN:INFL      0        0        1        1.0      0.0      0.0
+PREP           0        0        2        1.0      0.0      0.0
+VERB:FORM      0        0        1        1.0      0.0      0.0
+VERB:SVA       1        2        0        0.3333   1.0      0.3846
+VERB:TENSE     0        0        1        1.0      0.0      0.0
+
+=========== Span-Based Correction ============
+TP	FP	FN	Prec	Rec	F0.5
+2	2	5	0.5	0.2857	0.4348
+==============================================
+

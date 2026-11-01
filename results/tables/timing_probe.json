@@ -1,0 +1,16 @@
+{
+  "device": "cuda",
+  "effective_batch_size": 32,
+  "eval_minutes": 6.1,
+  "examples_per_s": 187.7,
+  "gradient_accumulation_steps": 1,
+  "measured_at": "2026-11-01T19:11:20Z",
+  "peak_vram_mb": 3382.6,
+  "precision": "bf16",
+  "probed_config": "e1_p0.1",
+  "s_per_step": 0.1705,
+  "seed": 13,
+  "sentences_per_s_beam4": 49.86,
+  "steps": 150,
+  "train_batch_size": 32
+}

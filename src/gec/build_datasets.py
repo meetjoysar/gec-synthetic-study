@@ -58,7 +58,20 @@ def resolve_spec(cfg: dict, seed: int) -> dict:
     if weights is None and wf:
         import yaml
 
-        loaded = yaml.safe_load(paths.read_text(paths.ROOT / wf)) or {}
+        wf_path = paths.ROOT / wf
+        if not wf_path.exists():
+            # E4's matched weights are produced by a separate step. Fail with
+            # the command that makes them, as a ConfigError so that
+            # `run_experiments --dry-run` can report the plan as blocked
+            # instead of crashing with a bare FileNotFoundError.
+            from gec.config import ConfigError
+
+            raise ConfigError(
+                f"dataset.synthetic.weights_file points at {wf}, which does not "
+                "exist yet.\nProduce it first:\n"
+                "    python -m gec.distribution --match"
+            )
+        loaded = yaml.safe_load(paths.read_text(wf_path)) or {}
         weights = loaded.get("weights", loaded)
     if weights is None:
         weights = (cfg.get("generator", {}) or {}).get("weights") or error_gen.DEFAULT_WEIGHTS
