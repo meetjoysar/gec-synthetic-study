@@ -369,3 +369,34 @@ def test_sanity_accepts_over_correction_falling(tmp_runs):
         paths.write_json(d / "metrics.json", m)
     assert not any("over-correction ROSE" in p
                    for p in agg.sanity_checks(agg.collect_runs(tmp_runs)))
+
+
+# --------------------------------------------------------------------------- #
+# Alias chains
+# --------------------------------------------------------------------------- #
+
+def test_alias_chain_is_followed_to_the_end(tmp_runs):
+    """e3_synthetic -> e2_clean0.0 -> e1_p0.2 is two hops.
+
+    Stopping after one would leave a pointer-only metrics file with no splits,
+    so the E3 synthetic-only row would silently be empty.
+    """
+    _write_run(tmp_runs, "e1_p0.2", 13, val_f05=0.19, test_f05=0.17)
+    _write_run(tmp_runs, "e2_clean0.0", 13, alias_of="e1_p0.2/seed13")
+    _write_run(tmp_runs, "e3_synthetic", 13, alias_of="e2_clean0.0/seed13")
+
+    rows = agg.collect_runs(tmp_runs)
+    row = [r for r in rows if r["run"] == "e3_synthetic"][0]
+    assert row["present"] is True
+    assert row["test_f05"] == 0.17, "metrics must come from the end of the chain"
+    # The table should still say what this run was configured to reuse.
+    assert row["alias_of"] == "e2_clean0.0/seed13"
+
+
+def test_alias_cycle_is_detected(tmp_runs):
+    _write_run(tmp_runs, "e3_synthetic", 13, alias_of="e2_clean0.0/seed13")
+    _write_run(tmp_runs, "e2_clean0.0", 13, alias_of="e3_synthetic/seed13")
+    rows = agg.collect_runs(tmp_runs)
+    assert all(not r["present"] for r in rows if r["run"] in
+               ("e3_synthetic", "e2_clean0.0"))
+    assert any("cycle" in w for w in agg.WARNINGS)

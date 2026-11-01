@@ -16,4 +16,6 @@ dataset:
     enabled: false
 eval:
   splits: [val, test]
-keep_checkpoint: false
+# true because e3_synthetic aliases the best E2 run, and both
+# e3_synth2real's warm start and the Gradio demo load those weights.
+keep_checkpoint: true

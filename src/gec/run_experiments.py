@@ -187,6 +187,29 @@ def write_alias(job: Job) -> None:
         )
     job.dir.mkdir(parents=True, exist_ok=True)
     cfgmod.save_config({**job.cfg, "seed": job.seed}, job.dir)
+
+    # An alias normally stores only a pointer. But a run can be aliased AND
+    # still be needed as a real checkpoint: `e3_synthetic` aliases the best E2
+    # run, while `e3_synth2real` warm-starts from `e3_synthetic/seed{seed}/model`
+    # and the Gradio demo loads the same path. Copying the weights (~240 MB) is
+    # far cheaper than retraining an identical configuration, and it keeps both
+    # consumers working.
+    if job.cfg.get("keep_checkpoint", True):
+        src_model = paths.RUNS / target / "model"
+        dst_model = job.dir / "model"
+        if src_model.exists() and not (dst_model / "config.json").exists():
+            import shutil
+
+            shutil.copytree(src_model, dst_model, dirs_exist_ok=True)
+            print(f"[run] copied the alias target's weights into "
+                  f"{paths.rel(dst_model)} (needed by stage 2 and the demo)")
+        elif not src_model.exists():
+            print(
+                f"[run] WARNING: {job.run} is an alias of {target}, which has no "
+                "model/ directory, so no weights could be copied. Anything that "
+                "needs this checkpoint (stage-2 training, the demo) will fail. "
+                f"Re-run {target} with keep_checkpoint=true."
+            )
     paths.write_json_atomic(
         job.dir / "metrics.json",
         {

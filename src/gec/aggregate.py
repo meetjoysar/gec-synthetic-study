@@ -115,17 +115,33 @@ def collect_runs(runs_dir: Path | None = None) -> list[dict]:
                 seed = int(d.name.replace("seed", ""))
             except ValueError:
                 continue
-            # Follow an alias (e2_clean0.0 -> e1_p*, e3_synthetic -> e2_*).
-            alias = m.get("alias_of")
-            if alias:
-                target = runs_dir / str(alias) / "metrics.json"
+            # Follow the alias CHAIN to a fixed point. One hop is not enough:
+            # e3_synthetic aliases the best E2 run, and if that is e2_clean0.0
+            # it is itself an alias of the best E1 run. Stopping after one hop
+            # would leave a pointer-only metrics file with no splits at all.
+            first_alias = m.get("alias_of")
+            seen_aliases: set[str] = set()
+            while m.get("alias_of"):
+                alias = str(m["alias_of"])
+                if alias in seen_aliases:
+                    _warn(f"{run_name}/seed{seed}: alias cycle at {alias}, giving up")
+                    m = None
+                    break
+                seen_aliases.add(alias)
+                target = runs_dir / alias / "metrics.json"
                 if not target.exists():
                     _warn(f"{run_name}/seed{seed}: alias target {alias} has no metrics")
-                    continue
+                    m = None
+                    break
                 inner = paths.read_json(target)
-                inner["alias_of"] = alias
                 inner["condition"] = m.get("condition") or inner.get("condition")
                 m = inner
+            if m is None:
+                continue
+            if first_alias:
+                # Record the ORIGINAL pointer, not the last hop, so the table
+                # says what this run was configured to reuse.
+                m["alias_of"] = first_alias
             found[(run_name, seed)] = m
 
     rows: list[dict] = []

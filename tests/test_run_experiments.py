@@ -186,7 +186,10 @@ def test_write_alias_records_the_pointer(tmp_runs):
     m = paths.read_json(job.dir / "metrics.json")
     assert m["alias_of"] == "e1_p0.2/seed13"
     assert m["_meta"]["complete"] is True
-    assert not (job.dir / "model").exists(), "an alias must not copy weights"
+    # The target here has no model/, so there is nothing to copy. Weight
+    # copying is covered by
+    # test_alias_copies_the_targets_weights_when_a_checkpoint_is_wanted.
+    assert not (job.dir / "model").exists()
 
 
 # --------------------------------------------------------------------------- #
@@ -234,3 +237,49 @@ def test_needs_selection_names_the_dependent_plans():
     assert rx.NEEDS_SELECTION == {"e2", "e3", "e4"}
     # e1 must NOT need selection, or the grid could never start.
     assert "e1" not in rx.NEEDS_SELECTION
+
+
+def test_alias_copies_the_targets_weights_when_a_checkpoint_is_wanted(tmp_runs):
+    """e3_synth2real warm-starts from e3_synthetic/model, and so does the demo.
+
+    An alias that stored only a pointer would leave both with nothing to load.
+    """
+    target = tmp_runs / "e2_clean0.33" / "seed13"
+    (target / "model").mkdir(parents=True)
+    paths.write_json(target / "metrics.json", {"_meta": {"complete": True}})
+    paths.write_json(target / "model" / "config.json", {"model_type": "t5"})
+    paths.write_text(target / "model" / "weights.bin", "pretend weights")
+
+    job = [j for j in rx.iter_jobs("e3", [13], resolve=False)
+           if j.config == "e3_synthetic"][0]
+    job.alias_of = "e2_clean0.33/seed13"
+    assert job.cfg["keep_checkpoint"] is True
+    rx.write_alias(job)
+
+    assert (job.dir / "model" / "config.json").exists(), \
+        "stage-2 training and the demo both need real weights at this path"
+    assert paths.read_text(job.dir / "model" / "weights.bin") == "pretend weights"
+
+
+def test_alias_without_a_checkpoint_warns(tmp_runs, capsys):
+    target = tmp_runs / "e2_clean0.33" / "seed13"
+    target.mkdir(parents=True)
+    paths.write_json(target / "metrics.json", {"_meta": {"complete": True}})
+
+    job = [j for j in rx.iter_jobs("e3", [13], resolve=False)
+           if j.config == "e3_synthetic"][0]
+    job.alias_of = "e2_clean0.33/seed13"
+    rx.write_alias(job)
+    assert "no model/" in capsys.readouterr().out
+
+
+def test_e2_runs_keep_their_checkpoints():
+    """Because e3_synthetic aliases the best one and needs real weights."""
+    for job in rx.iter_jobs("e2", [13], resolve=False):
+        assert job.cfg["keep_checkpoint"] is True, job.config
+
+
+def test_e1_runs_do_not_keep_checkpoints():
+    """Nothing downstream needs them, and they are ~240 MB each."""
+    for job in rx.iter_jobs("e1", [13], resolve=False):
+        assert job.cfg["keep_checkpoint"] is False, job.config
