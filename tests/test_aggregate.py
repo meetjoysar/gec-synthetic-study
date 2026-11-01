@@ -318,3 +318,54 @@ def test_noise_curve_does_not_plot_the_precomp_arm_as_a_second_point(tmp_runs):
     assert out is not None and out.exists()
     # No warning about the curve; it had 3 clean sweep points.
     assert not any("noise_curve" in w for w in agg.WARNINGS)
+
+
+# --------------------------------------------------------------------------- #
+# Spec 7.3 sanity checks
+# --------------------------------------------------------------------------- #
+
+def test_sanity_passes_on_plausible_results(tmp_runs):
+    _write_run(tmp_runs, "e0_copy", 13, val_f05=0.0, test_f05=0.0)
+    _write_run(tmp_runs, "e3_real", 13, val_f05=0.2, test_f05=0.18)
+    assert agg.sanity_checks(agg.collect_runs(tmp_runs)) == []
+
+
+def test_sanity_flags_a_nonzero_copy_baseline(tmp_runs):
+    _write_run(tmp_runs, "e0_copy", 13, val_f05=0.0, test_f05=0.05)
+    problems = agg.sanity_checks(agg.collect_runs(tmp_runs))
+    assert any("copy baseline" in p for p in problems)
+
+
+def test_sanity_flags_a_trained_model_scoring_zero(tmp_runs):
+    _write_run(tmp_runs, "e3_real", 13, val_f05=0.0, test_f05=0.0)
+    problems = agg.sanity_checks(agg.collect_runs(tmp_runs))
+    assert any("trained model but scored" in p for p in problems)
+
+
+def test_sanity_flags_over_correction_rising_with_clean_ratio(tmp_runs):
+    """E2's whole hypothesis is that identity pairs REDUCE over-correction."""
+    import json as _json
+
+    for run, cr, oc in [("e2_clean0.0", 0.0, 0.10), ("e2_clean0.2", 0.2, 0.30),
+                        ("e2_clean0.33", 0.33, 0.50)]:
+        d = _write_run(tmp_runs, run, 13, val_f05=0.1, test_f05=0.1,
+                       cfg={"dataset": {"synthetic": {"clean_ratio": cr}}})
+        m = _json.loads(paths.read_text(d / "metrics.json"))
+        m["splits"]["test"]["over_correction_rate"] = oc
+        paths.write_json(d / "metrics.json", m)
+    problems = agg.sanity_checks(agg.collect_runs(tmp_runs))
+    assert any("over-correction ROSE" in p for p in problems)
+
+
+def test_sanity_accepts_over_correction_falling(tmp_runs):
+    import json as _json
+
+    for run, cr, oc in [("e2_clean0.0", 0.0, 0.50), ("e2_clean0.2", 0.2, 0.30),
+                        ("e2_clean0.33", 0.33, 0.10)]:
+        d = _write_run(tmp_runs, run, 13, val_f05=0.1, test_f05=0.1,
+                       cfg={"dataset": {"synthetic": {"clean_ratio": cr}}})
+        m = _json.loads(paths.read_text(d / "metrics.json"))
+        m["splits"]["test"]["over_correction_rate"] = oc
+        paths.write_json(d / "metrics.json", m)
+    assert not any("over-correction ROSE" in p
+                   for p in agg.sanity_checks(agg.collect_runs(tmp_runs)))

@@ -305,6 +305,55 @@ def write_summary(rows: list[dict]) -> tuple[Path, Path]:
     return out1, out2
 
 
+def sanity_checks(rows: list[dict]) -> list[str]:
+    """The three checks spec section 7.3 names explicitly.
+
+    Reported as warnings rather than raised, so a surprising-but-real result is
+    flagged for investigation instead of aborting the whole report. ``--strict``
+    turns them into a non-zero exit for the final pre-submission pass.
+    """
+    problems: list[str] = []
+    present = [r for r in rows if r.get("present")]
+
+    # 1. E0 must score exactly zero: it proposes no edits at all.
+    for r in present:
+        if r["run"] == "e0_copy" and r.get("test_f05") not in (None, 0.0):
+            problems.append(
+                f"SANITY: the copy baseline scored test F0.5 = {r['test_f05']}, "
+                "which must be exactly 0 - it proposes no edits."
+            )
+
+    # 2. Every TRAINED model must beat zero, or something is broken.
+    for r in present:
+        if r["run"] == "e0_copy" or r.get("test_f05") is None:
+            continue
+        if r["test_f05"] <= 0.0:
+            problems.append(
+                f"SANITY: {r['run']}/seed{r['seed']} is a trained model but scored "
+                f"test F0.5 = {r['test_f05']}. Spec 7.3 expects > 0; check "
+                "train_metrics.json for the degenerate-output flag."
+            )
+
+    # 3. Over-correction should FALL as clean_ratio rises (spec 7.3 says to
+    #    investigate if it does not). This is E2's whole hypothesis.
+    e2 = [
+        (_cfg_value(r, "dataset.synthetic.clean_ratio"), r)
+        for r in present
+        if r.get("family") == "e2" and r.get("test_over_correction") is not None
+    ]
+    e2 = sorted((c, r) for c, r in e2 if isinstance(c, (int, float)))
+    if len(e2) >= 3:
+        rates = [r["test_over_correction"] for _, r in e2]
+        if rates[-1] > rates[0]:
+            problems.append(
+                "SANITY: over-correction ROSE with clean_ratio "
+                f"({e2[0][0]}: {rates[0]:.3f} -> {e2[-1][0]}: {rates[-1]:.3f}). "
+                "Spec 7.3 expects it to fall; worth investigating before the "
+                "report draws a conclusion from E2."
+            )
+    return problems
+
+
 def table_e5_indian(rows: list[dict]) -> Path | None:
     """E5 table: P/R/F0.5 per model on the Indian English set, plus kappa."""
     have = [r for r in rows if r.get("present") and r.get("indian_f05") is not None]
@@ -749,6 +798,16 @@ def write_results_md(rows: list[dict], figures: dict[str, Path | None]) -> Path:
         lines += [f"- {w}" for w in WARNINGS]
         lines.append("")
 
+    failed_checks = [w for w in WARNINGS if w.startswith("SANITY:")]
+    if failed_checks:
+        lines += ["### Sanity checks that did not hold (spec 7.3)", ""]
+        lines += [f"- {w[len('SANITY: '):]}" for w in failed_checks]
+        lines.append("")
+    elif present:
+        lines += ["All spec 7.3 sanity checks hold: the copy baseline scores "
+                  "exactly 0, every trained model scores above 0, and "
+                  "over-correction does not rise with `clean_ratio`.", ""]
+
     suspects = [r for r in present if r.get("train_suspect")]
     if suspects:
         lines += ["### Suspect runs", "",
@@ -880,6 +939,11 @@ def main(argv: list[str] | None = None) -> int:
         write_summary(rows)
         write_selection(rows)
         table_e5_indian(rows)
+
+    # Spec 7.3's sanity checks. Warnings, not exceptions: a surprising result
+    # should be flagged for investigation, not suppress the whole report.
+    for problem in sanity_checks(rows):
+        _warn(problem)
 
     figures: dict[str, Path | None] = {}
     if not args.tables_only:
