@@ -163,11 +163,22 @@ def _run_cfg(run: str, seed: int) -> dict:
     return yaml.safe_load(paths.read_text(p)) or {}
 
 
+#: Runs that belong to a family for *reporting* but must not take part in its
+#: hyperparameter selection. ``e1_p0.2_precomp`` (deviation D10) differs from
+#: ``e1_p0.2`` only in the generator weights, so including it would make E1's
+#: "best p" ambiguous: the selection records a value for `p` alone, and a win
+#: by the pre-compensated arm would silently drop the weights half of the
+#: choice, leaving E2/E3 to train with default weights at the chosen p. It is
+#: an orthogonal comparison and is reported as its own result instead.
+SELECTION_EXCLUDE = ("e1_p0.2_precomp",)
+
+
 def select_best(
     family: str,
     rows: list[dict],
     metric: str = "val_f05",
     key_path: str = "dataset.synthetic.p",
+    exclude: tuple[str, ...] = SELECTION_EXCLUDE,
 ) -> dict:
     """Pick the best run in *family* by **val** F0.5.
 
@@ -184,6 +195,7 @@ def select_best(
     cands = [
         r for r in rows
         if r.get("family") == family and r.get("present") and r.get(metric) is not None
+        and r.get("run") not in exclude
     ]
     if not cands:
         return {}
@@ -422,7 +434,13 @@ def fig_e0_bleu_vs_f05(rows: list[dict]) -> Path | None:
 def fig_e1_noise_curve(rows: list[dict]) -> Path | None:
     """Figure 2: val and test F0.5 against the noise ratio ``p``."""
     have = _present(rows, "e1", "val_f05")
-    pts = [(_cfg_value(r, "dataset.synthetic.p"), r) for r in have]
+    # The pre-compensated arm shares p with e1_p0.2 and differs only in the
+    # generator weights, so it is a separate marker rather than a second point
+    # on the curve.
+    sweep = [r for r in have if r.get("run") not in SELECTION_EXCLUDE]
+    extra = [r for r in have if r.get("run") in SELECTION_EXCLUDE]
+
+    pts = [(_cfg_value(r, "dataset.synthetic.p"), r) for r in sweep]
     pts = [(p, r) for p, r in pts if isinstance(p, (int, float))]
     if len(pts) < 2:
         _warn(f"figure 2 (e1_noise_curve) skipped: only {len(pts)} of "
@@ -432,16 +450,21 @@ def fig_e1_noise_curve(rows: list[dict]) -> Path | None:
     pts.sort(key=lambda x: x[0])
     ps = [p for p, _ in pts]
     plt = _plt()
-    fig, ax = plt.subplots(figsize=(6, 4))
+    fig, ax = plt.subplots(figsize=(6.5, 4.2))
     ax.plot(ps, [r.get("val_f05") for _, r in pts], "o-", label="val (used for selection)")
     test = [r.get("test_f05") for _, r in pts]
     if any(v is not None for v in test):
         ax.plot(ps, test, "s--", label="test (reported only)")
+    for r in extra:
+        xp = _cfg_value(r, "dataset.synthetic.p")
+        if isinstance(xp, (int, float)) and r.get("val_f05") is not None:
+            ax.plot([xp], [r["val_f05"]], "D", color="#c67a7a", markersize=9,
+                    label="val, distribution-flattened weights")
     ax.set_xlabel("noise ratio p (probability a token is selected for corruption)")
     ax.set_ylabel("ERRANT F0.5")
     ax.set_title("E1: is there a best synthetic noise level?")
     ax.set_xticks(ps)
-    ax.legend()
+    ax.legend(fontsize=8)
     out = paths.FIGURES / "e1_noise_curve.png"
     fig.savefig(out); plt.close(fig)
     return out
@@ -770,6 +793,29 @@ def write_results_md(rows: list[dict], figures: dict[str, Path | None]) -> Path:
             lines.append("")
     else:
         lines += ["**TBD** - no selection has been computed yet.", ""]
+
+    precomp = [r for r in rows if r.get("run") in SELECTION_EXCLUDE and r.get("present")]
+    baseline = [r for r in rows if r.get("run") == "e1_p0.2" and r.get("present")]
+    if precomp and baseline:
+        a, b = baseline[0], precomp[0]
+        lines += [
+            "## Extra E1 arm: flattening the generator's error distribution", "",
+            "`e1_p0.2_precomp` is identical to `e1_p0.2` except that the generator "
+            "weights are pre-compensated for applicability gating, so the "
+            "*realised* error mix is closer to uniform across the ten covered "
+            "ERRANT categories (measured TVD against uniform 0.336 -> 0.163). "
+            "Same `p`, same seed, same base-set sentences.", "",
+            "| arm | val F0.5 | test F0.5 | test over-correction |",
+            "|---|---:|---:|---:|",
+            f"| e1_p0.2 (default weights) | {_fmt(a.get('val_f05'))} | "
+            f"{_fmt(a.get('test_f05'))} | {_fmt(a.get('test_over_correction'))} |",
+            f"| e1_p0.2_precomp (flattened) | {_fmt(b.get('val_f05'))} | "
+            f"{_fmt(b.get('test_f05'))} | {_fmt(b.get('test_over_correction'))} |",
+            "",
+            "This arm is excluded from the E1 `p` selection by design: it differs "
+            "in the weights, not the noise level, so letting it win would record a "
+            "`p` while silently dropping the weights half of the choice.", "",
+        ]
 
     lines += ["## Figures", ""]
     for name, p in figures.items():

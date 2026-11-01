@@ -262,3 +262,59 @@ def test_failure_gallery_needs_two_models(tmp_runs):
     _write_run(tmp_runs, "e3_real", 13, val_f05=0.1, test_f05=0.1)
     assert agg.failure_gallery(agg.collect_runs(tmp_runs)) is None
     assert any("need >= 2" in w for w in agg.WARNINGS)
+
+
+# --------------------------------------------------------------------------- #
+# The extra E1 arm must not contaminate the p selection (deviation D10)
+# --------------------------------------------------------------------------- #
+
+def test_precomp_arm_is_excluded_from_the_p_selection(tmp_runs):
+    """e1_p0.2_precomp differs in WEIGHTS, not in p.
+
+    Letting it win would record a value for `p` while silently dropping the
+    weights half of the choice, so E2/E3 would then train with default weights
+    at the chosen p - a configuration no E1 arm ever measured.
+    """
+    _write_run(tmp_runs, "e1_p0.1", 13, val_f05=0.15, test_f05=0.1,
+               cfg={"dataset": {"synthetic": {"p": 0.1}}})
+    _write_run(tmp_runs, "e1_p0.2", 13, val_f05=0.19, test_f05=0.1,
+               cfg={"dataset": {"synthetic": {"p": 0.2}}})
+    # The precomp arm has the best val score of all.
+    _write_run(tmp_runs, "e1_p0.2_precomp", 13, val_f05=0.42, test_f05=0.1,
+               cfg={"dataset": {"synthetic": {"p": 0.2}}})
+
+    rows = agg.collect_runs(tmp_runs)
+    best = agg.select_best("e1", rows, key_path="dataset.synthetic.p")
+    assert best["best_run"] == "e1_p0.2/seed13"
+    assert "precomp" not in best["best_run"]
+    assert all("precomp" not in k for k in best["candidates"])
+
+
+def test_precomp_arm_still_appears_in_the_summary(tmp_runs):
+    """Excluded from selection, but it is a reported result."""
+    _write_run(tmp_runs, "e1_p0.2_precomp", 13, val_f05=0.42, test_f05=0.3)
+    out1, _ = agg.write_summary(agg.collect_runs(tmp_runs))
+    assert "e1_p0.2_precomp" in paths.read_text(out1)
+
+
+def test_results_md_reports_the_precomp_comparison(tmp_runs):
+    _write_run(tmp_runs, "e1_p0.2", 13, val_f05=0.19, test_f05=0.17)
+    _write_run(tmp_runs, "e1_p0.2_precomp", 13, val_f05=0.21, test_f05=0.20)
+    text = paths.read_text(agg.write_results_md(agg.collect_runs(tmp_runs), {}))
+    assert "Extra E1 arm" in text
+    assert "0.1700" in text and "0.2000" in text
+    assert "excluded from the E1" in text
+
+
+def test_noise_curve_does_not_plot_the_precomp_arm_as_a_second_point(tmp_runs):
+    """Two points at p=0.2 would make the curve misleading."""
+    for run, p, val in [("e1_p0.1", 0.1, 0.15), ("e1_p0.2", 0.2, 0.19),
+                        ("e1_p0.4", 0.4, 0.12)]:
+        _write_run(tmp_runs, run, 13, val_f05=val, test_f05=0.1,
+                   cfg={"dataset": {"synthetic": {"p": p}}})
+    _write_run(tmp_runs, "e1_p0.2_precomp", 13, val_f05=0.42, test_f05=0.1,
+               cfg={"dataset": {"synthetic": {"p": 0.2}}})
+    out = agg.fig_e1_noise_curve(agg.collect_runs(tmp_runs))
+    assert out is not None and out.exists()
+    # No warning about the curve; it had 3 clean sweep points.
+    assert not any("noise_curve" in w for w in agg.WARNINGS)
