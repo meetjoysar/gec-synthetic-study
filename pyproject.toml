@@ -18,4 +18,8 @@ markers = [
 filterwarnings = [
     "ignore::DeprecationWarning:spacy.*",
     "ignore::FutureWarning:transformers.*",
+    # matplotlib's font-pattern parser uses deprecated pyparsing APIs; noisy and
+    # not actionable from here.
+    "ignore:.*deprecated - use.*:DeprecationWarning",
+    "ignore::UserWarning:torch.*",
 ]

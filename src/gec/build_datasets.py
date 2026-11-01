@@ -134,12 +134,19 @@ def build_synthetic(spec: dict, seed: int) -> tuple[list[dict], dict]:
     random.Random(seed).shuffle(idx)
     idx = idx[:n]
 
-    # Which rows stay clean is drawn from the same seeded stream, so a
-    # clean_ratio sweep keeps the noisy subset NESTED - a cleaner E2 comparison
-    # than redrawing the corrupted sentences for every ratio.
-    rng = random.Random(seed + 1)
+    # Which rows stay clean: shuffle the positions ONCE under a fixed seed and
+    # take a prefix, so a clean_ratio sweep produces strictly NESTED identity
+    # sets (the 0.2 set is a subset of the 0.33 set, and so on). That makes the
+    # E2 comparison differ only in *which sentences were left alone*, with the
+    # corrupted ones identical across conditions.
+    #
+    # `rng.sample(range(n), k)` would NOT do this: it draws independently for
+    # each k, so two ratios would disagree about which sentences to corrupt as
+    # well as how many - confounding the very thing E2 measures.
     n_clean = int(round(clean_ratio * n))
-    clean_positions = set(rng.sample(range(n), n_clean)) if n_clean else set()
+    order = list(range(n))
+    random.Random(seed + 1).shuffle(order)
+    clean_positions = set(order[:n_clean])
 
     gen = error_gen.ErrorGenerator(weights=syn["weights"], seed=seed)
     rows: list[dict] = []

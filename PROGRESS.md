@@ -38,6 +38,24 @@ code wrote, or says `TBD`.
 | errant | `3.0.2`; spaCy `3.8.7`; `en_core_web_sm` `3.8.0` |
 | Disk free | ~151 GiB |
 
+### Measured GPU throughput (`--timing-probe`, not estimated)
+
+| train batch × accum | examples/s | peak VRAM | sentences/s (beam 4) | |
+|---|---:|---:|---:|---|
+| 8 × 4 | 96.9 | 1600 MB | 35.7 | the original default |
+| **16 × 2** | **161.5** | **2117 MB** | **50.8** | **chosen — 1.67×** |
+| 32 × 1 | 187.7 | 3383 MB | 49.9 | a further 16%, but only ~700 MB headroom |
+
+All three keep the effective batch at the spec's 32. `32 × 1` was rejected
+because this GPU also drives the display, and ~700 MB of headroom is not a
+sensible margin across a multi-hour campaign. bf16 is confirmed **real** here
+(compute capability 8.6), not emulated.
+
+My pre-measurement analytical estimate was 55 examples/s — **2.9× too
+pessimistic**, which is why the original budget trim (D4/D5) turned out to be
+unnecessary and was withdrawn. Recorded as a caution: estimate, then measure,
+then re-decide.
+
 ### Two machine-specific gotchas — every command needs these
 
 ```powershell
@@ -112,9 +130,9 @@ Recorded as they happen, per spec section 13.
 | D1 | Repo named `gec-synthetic-study/` (§4) | Repo root **is** `IA/gec-synthetic-study/`; `CLAUDE.md`, `PROJECT_SPEC.md`, `IA1_REPORT_GEC.md` are **copies**, the originals stay in `IA/` | User chose the subfolder layout. The repo must be self-contained to be reproducible. |
 | D2 | `errant` "installs spaCy and `en_core_web_sm`" (§3) | `python -m spacy download en_core_web_sm` run separately | **The spec is wrong for errant 3.x.** `errant==3.0.2` depends only on `spacy>=3.2,<4` and `rapidfuzz`; it does not pull the model. Also means the feared spaCy version conflict does not exist. |
 | D3 | — | Added `src/gec/errant_cli.py` and `src/gec/repro.py` beyond the §4 module list | Each has >=3 consumers. Keeping ERRANT behind a subprocess wrapper means `train.py` never imports spaCy. |
-| D4 | `data.synthetic_n: 50000`, `epochs: 3` (§8.1) | `synthetic_n: 30000`, `epochs: 2` | **User chose the trimmed ~8 h GPU budget.** The full §7 grid is 24–30 h on this laptop, ~100x the §2.4 "ask before 15 minutes" rule. |
-| D5 | E1 sweeps `p ∈ {0.1, 0.2, 0.4, 0.6}` (§7) | `p ∈ {0.1, 0.2, 0.4}` | Same budget decision. The noise curve survives with 3 points. |
-| D6 | E3 uses seeds `[13, 42, 2026]` (§7) | E3 uses **seed 13 only** | Same budget decision. Figure 4 will carry `n=1` and no error bars, stated plainly in the report. |
+| ~~D4~~ | `data.synthetic_n: 50000`, `epochs: 3` (§8.1) | **WITHDRAWN** — spec values restored | Was trimmed to 30000/2 on an *analytical* estimate of 55 examples/s. The timing probe measured **161.5/s** (2.9× better) after batch tuning, so the full setting is affordable. No longer a deviation. |
+| ~~D5~~ | E1 sweeps `p ∈ {0.1, 0.2, 0.4, 0.6}` (§7) | **WITHDRAWN** — all four points restored | Same reason as D4. E1 now runs 5 arms: the spec's four noise points plus the pre-compensated arm (D10). |
+| D6 | E3 uses seeds `[13, 42, 2026]` (§7) | E3 uses **seed 13** for now | The only budget cut still standing. Figure 4 carries `n=1` and no error bars, stated plainly in the report and annotated by `aggregate.py`. The extra seeds are a **resumable follow-on** (~2 h): `--plan e3 --seeds 42 2026 --yes` adds them without redoing anything. |
 | D7 | WikiText-103 full train split (§5.4) | `streaming=True` with early stop at 60k sentences (~60–90 MB instead of ~250 MB) | User-confirmed. We need 60k of ~4M sentences; streaming avoids the §2.4 download threshold entirely. |
 | D8 | `datasets` implied for the training path (§3) | Plain `torch.utils.data.Dataset` + `DataCollatorForSeq2Seq`; `datasets` only used for WikiText | Decouples training from Arrow/`huggingface-hub` version churn. `datasets>=4.3` requires `huggingface-hub>=1.31` while `transformers 4.53.1` requires `<1.0`. |
 | D9 | Phase order 0–11 (§10) | Indian-English template moved to **after Phase 2**; `aggregate.py` skeleton moved to **before the first GPU run** | The 150 hand-written sentences are the longest-lead *human* task and must start early. Building the TBD path first verifies it in the hardest case (everything missing). |
@@ -190,7 +208,10 @@ Per-run values are written to `results/runs/<run>/seed<k>/config.yaml` and
 | E0 copy baseline (CPU, val + test) | **0.9 min** |
 | WikiText pool build (CPU) | ~11 min |
 | W&I download + split (CPU) | ~1 min |
-| GPU training runs | TBD — `--timing-probe` first, then `results/runs/_timing.jsonl` |
+| GPU training run (50k × 3 epochs) | **~19.4 min** each (measured), + ~6 min evaluation |
+| E1 plan (5 arms) | **~97 min** estimated from measurement |
+| Full remaining grid (E1–E4, single seed) | ~5.3 h ideal / ~6.5 h realistic |
+| Per-run detail | `results/runs/_timing.jsonl` |
 
 ## Open issues
 
