@@ -13,15 +13,15 @@ code wrote, or says `TBD`.
 | Phase | Work | Status |
 |---|---|---|
 | 0 | Setup: env, requirements, repo, `paths.py`, `repro.py`, git | **DONE** |
-| 1 | Data: `m2.py`, `tok.py`, `prepare_data.py` | in progress |
-| 2 | Generator: `error_gen.py` | TODO |
-| 3 | Evaluation + E0 | TODO |
-| 4 | Training: `build_datasets.py`, `train.py`, `predict.py`, `run_experiments.py` | TODO |
-| 5 | Colab notebook | TODO |
-| 6 | E1–E3 runs (GPU) | TODO |
-| 7 | E4 distribution matching (GPU) | TODO |
-| 8 | Indian English: template, kappa, E5 | TODO |
-| 9 | Aggregation: figures, tables, `RESULTS.md` | TODO |
+| 1 | Data: `m2.py`, `tok.py`, `prepare_data.py` | **DONE** — counts match §5 exactly |
+| 2 | Generator: `error_gen.py` | **DONE** — 15 ops / 10 categories, examples reviewed |
+| 3 | Evaluation + E0 | **DONE** — E0 test F0.5 = 0.0000, BLEU 80.03 |
+| 4 | Training: `build_datasets.py`, `train.py`, `predict.py`, `run_experiments.py` | **DONE** — smoke passes on CPU in 1.4 min |
+| 5 | Colab notebook | in progress |
+| 6 | E1–E3 runs (GPU) | blocked on the timing probe + time approval |
+| 7 | E4 distribution matching | `distribution.py` **DONE**; runs await GPU |
+| 8 | Indian English: template, kappa, E5 | template + `kappa.py` **DONE**; E5 awaits the group's sentences |
+| 9 | Aggregation: figures, tables, `RESULTS.md` | **DONE** (skeleton verified all-TBD); figures fill in as runs land |
 | 10 | Gradio demo | TODO |
 | 11 | Docs: `README.md`, `CREDITS.md` | TODO |
 
@@ -56,6 +56,21 @@ $PY = "C:\Users\91942\miniconda3\envs\gec\python.exe"
    suppress it, because `--isolated` ignores *user* config but still reads the global file.
 
 ---
+
+## Acceptance checks passed so far
+
+| Phase | Check (spec §10) | Result |
+|---|---|---|
+| 0 | `pip install` works; `import errant, spacy, transformers` works; `pytest` runs | PASS — errant annotates `He go`→`He goes` as `R:VERB:SVA` |
+| 1 | `data/processed/` has the splits + `clean_pool.txt`; printed counts match §5 | PASS — 32,308 / 2,000 / 4,384 / 60,000; all four alignment invariants hold |
+| 2 | All ops tested; `--demo 20` plausible; user confirms 10 examples | PASS — 115 tests; examples reviewed at p=0.1/0.2/0.4 |
+| 3 | E0 on test: **F0.5 = 0**, BLEU reported, per-category CSV written | PASS — F0.5 = **0.0000**, BLEU(13a) = **80.03** |
+| 4 | Smoke test passes end-to-end on CPU | PASS — 1.4 min |
+| 9 | All figures generated from saved metrics; missing runs shown as TBD | PASS — verified with 13 of 14 runs missing, no crash |
+
+`cross_check_delta = 0.0` on every split evaluated so far: our independent
+reimplementation of `errant_compare` agrees exactly with the parsed CLI output,
+which makes the stdout parsers self-validating.
 
 ## Phase 0 — Setup (DONE)
 
@@ -103,27 +118,79 @@ Recorded as they happen, per spec section 13.
 | D7 | WikiText-103 full train split (§5.4) | `streaming=True` with early stop at 60k sentences (~60–90 MB instead of ~250 MB) | User-confirmed. We need 60k of ~4M sentences; streaming avoids the §2.4 download threshold entirely. |
 | D8 | `datasets` implied for the training path (§3) | Plain `torch.utils.data.Dataset` + `DataCollatorForSeq2Seq`; `datasets` only used for WikiText | Decouples training from Arrow/`huggingface-hub` version churn. `datasets>=4.3` requires `huggingface-hub>=1.31` while `transformers 4.53.1` requires `<1.0`. |
 | D9 | Phase order 0–11 (§10) | Indian-English template moved to **after Phase 2**; `aggregate.py` skeleton moved to **before the first GPU run** | The 150 hand-written sentences are the longest-lead *human* task and must start early. Building the TBD path first verifies it in the hardest case (everything missing). |
+| D10 | E1 sweeps `p` only, with one fixed set of generator weights (§6.2, §7) | **Extra E1 arm `e1_p0.2_precomp`**: same `p`, seed and base-set sentences as `e1_p0.2`, but with generator weights pre-compensated for applicability gating | **User-requested.** §6.2's weights are uniform across ERRANT types *as requested*, but each op's `applies` check gates whether it can fire, so the **realised** mix is badly skewed (measured below). The extra arm separates two questions the default weights conflate: "is there a best noise level?" and "does the generator's skewed realised distribution hold synthetic-only back?". Costs ~30 min of GPU time. |
+| D11 | — | Predictions are re-tokenised with spaCy before scoring (`predict.retokenise`) | T5's pretraining pulls its output toward ordinary detokenised English, so it emits `information.` where the source had `information .` — **48 of 50** smoke predictions needed it. ERRANT cannot distinguish that surface convention from a real `PUNCT` edit, so left alone it manufactures a spurious edit on nearly every sentence. Spec §5.3 already requires predictions to be in tokenised form. |
+| D12 | §5.4 keeps sentences with "no unusual characters (mostly ASCII…)" | Clean-pool charset filter rejects a sentence if ASCII folding **destroys** information (introduces a `?`), rather than applying a 95% character ratio | A ratio test is the wrong instrument: a long English sentence with one embedded Greek or CJK word clears 95% easily and still leaves a `??????????` token in the training data. Accented Latin folds cleanly (`café`→`cafe`) and is kept. Junk with ≥2 `?` fell from 326 to **1** of 60,000. |
+| D13 | §8.4 delete checkpoints except the demo/E5 models | Checkpoint pruning happens in `run_experiments` **after** prediction and evaluation, never inside `train()` | Deleting the weights at the end of training leaves `predict.py` with nothing to load. Caught by the smoke test. Retention is then a disk question, not a correctness one, and spec §7's "evaluate every E3/E4 model on the Indian set" stays possible. |
 
 ---
 
 ## Dataset sizes after each preprocessing step
 
+All measured, from the stats files our code wrote.
+
 | Step | Count | Source file |
 |---|---|---|
-| W&I `ABC.train.gold.bea19.m2` blocks | TBD | — |
-| → `train_real` | TBD | `data/processed/train_real.stats.json` |
-| → `val` (held out, seed 42) | TBD | `data/processed/val.stats.json` |
-| W&I `ABCN.dev.gold.bea19.m2` → `test` | TBD | `data/processed/test.stats.json` |
-| WikiText-103 clean pool | TBD | `data/processed/clean_pool.stats.json` |
-| Indian English (real rows, excl. `EXAMPLE-`) | TBD | `data/processed/indian.stats.json` |
+| W&I `ABC.train.gold.bea19.m2` blocks | **34,308** | — |
+| → `train_real` | **32,308** (33.8% already correct, 1.81 edits/sentence) | `data/processed/train_real.stats.json` |
+| → `val` (held out, seed 42) | **2,000** (33.1% correct) | `data/processed/val.stats.json` |
+| W&I `ABCN.dev.gold.bea19.m2` → `test` | **4,384** (35.7% correct, 1.70 edits/sentence) | `data/processed/test.stats.json` |
+| WikiText-103 clean pool | **60,000** (mean 23.3 tokens; 50,000 base set + 10,000 held back for the E4 probe) | `data/processed/clean_pool.stats.json` |
+| → scanned to produce it | 118,922 sentences from 27,392 lines; rejected 19,154 length / 2,088 no-verb / 1,492 charset / 188 duplicate | same |
+| Indian English (real rows, excl. `EXAMPLE-`) | **0** — awaiting the group (5 `EXAMPLE-` rows ship as the format demo) | `data/processed/indian.skip` |
+
+**Note for the report:** the 33.8% already-correct share of `train_real`
+empirically confirms spec §7's claim that `clean_ratio = 0.33` matches W&I's own
+proportion of correct sentences. That was an assumption in the spec; it is now a
+measurement.
+
+## Generator error distribution (measured, 30,000 pairs at p=0.2)
+
+The realised mix is **not** the requested mix, because each operation's
+`applies` check gates whether it can fire at all. `word_dup` applies to almost
+any token; `sva` needs a copula or a VBZ/VBP.
+
+| ERRANT type | real `train_real` | synthetic (default weights) | note |
+|---|---:|---:|---|
+| PUNCT | 17.6% | 24.9% | |
+| OTHER | 13.1% | 20.9% | |
+| DET | 11.6% | 10.0% | |
+| PREP | 10.0% | 7.4% | |
+| VERB:TENSE | 6.2% | 2.3% | under-produced |
+| ORTH | 4.9% | 8.8% | |
+| NOUN:NUM | 4.2% | 5.8% | |
+| SPELL | 3.8% | 18.0% | **4.7× over-produced** |
+| VERB:FORM | 3.7% | 0.8% | **4.6× under-produced** |
+| VERB:SVA | 2.3% | 1.1% | under-produced |
+| *uncovered* (WO, MORPH, NOUN:POSS, …) | 22.6% | 0.0% | the generator structurally cannot produce these |
+
+Verb errors overall: **15.8% real vs 4.2% synthetic.** Total variation distance
+over the covered categories: **0.220**. This is the gap E4 exists to close, and
+the reason for the extra `e1_p0.2_precomp` arm (deviation D10).
+
+Pre-compensation result (`python -m gec.distribution --precompensate`): TVD
+against uniform falls **0.336 → 0.163** over 3 clipped iterations; SPELL lands
+on target (21.5% → 9.9%) and verb categories roughly quadruple. They still fall
+short of 10% because of a **structural ceiling**: no weighting can create a verb
+error on a sentence with no eligible verb.
 
 ## Hyperparameters actually used
 
-TBD — written per run to `results/runs/<run>/seed<k>/config.yaml` and `env.json`.
+Per-run values are written to `results/runs/<run>/seed<k>/config.yaml` and
+`env.json`. Base values in `configs/base.yaml`; the trimmed-budget ones are
+`epochs: 2`, `data.synthetic_n: 30000`, `train_batch_size: 8` with
+`gradient_accumulation_steps: 4` (effective 32, per spec §8.1).
 
 ## Run times
 
-TBD — measured by `--timing-probe`, then appended to `results/runs/_timing.jsonl`.
+| What | Measured |
+|---|---|
+| `pytest -q` | ~55 s (115 tests) |
+| `--plan smoke` (CPU, end to end) | **1.4 min** |
+| E0 copy baseline (CPU, val + test) | **0.9 min** |
+| WikiText pool build (CPU) | ~11 min |
+| W&I download + split (CPU) | ~1 min |
+| GPU training runs | TBD — `--timing-probe` first, then `results/runs/_timing.jsonl` |
 
 ## Open issues
 
@@ -134,3 +201,10 @@ TBD — measured by `--timing-probe`, then appended to `results/runs/_timing.jso
       Template ships in Phase 8a; E5 stays `TBD` until >= 20 real rows exist.
 - [ ] GPU campaign not yet approved with measured numbers. The `--timing-probe` run comes
       first, then the hours get restated before anything long starts.
+- [ ] Verb errors are structurally hard for the generator to produce (15.8% real vs 4.2%
+      synthetic, and only ~4.5% even after pre-compensation). Worth one paragraph in the
+      report: part of any synthetic-only shortfall is a generator-coverage limit, not
+      evidence about synthetic data in principle.
+- [ ] The generator covers 10 ERRANT categories; **22.6% of real W&I edits are in
+      categories it cannot produce at all** (WO, MORPH, NOUN:POSS, CONTR, VERB:INFL).
+      That ceiling bounds what synthetic-only training can achieve here.

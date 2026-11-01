@@ -35,7 +35,9 @@ from gec import paths, repro
 #: The trimmed grid (deviations D4-D6) - E1 has 3 noise points, E3 one seed.
 PLANS: dict[str, list[str]] = {
     "e0": ["e0_copy"],
-    "e1": ["e1_p0.1", "e1_p0.2", "e1_p0.4"],
+    # e1_p0.2_precomp is an extra arm (deviation D10): same p and sentences
+    # as e1_p0.2, only the generator weights differ.
+    "e1": ["e1_p0.1", "e1_p0.2", "e1_p0.4", "e1_p0.2_precomp"],
     "e2": ["e2_clean0.0", "e2_clean0.2", "e2_clean0.33", "e2_clean0.5"],
     "e3": ["e3_synthetic", "e3_real", "e3_mixed", "e3_synth2real"],
     "e4": ["e4_synthetic_matched", "e4_mixed_matched"],

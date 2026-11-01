@@ -1,0 +1,89 @@
+{
+  "history": [
+    {
+      "iter": 0,
+      "shares": {
+        "DET": 0.147096,
+        "NOUN:NUM": 0.058712,
+        "ORTH": 0.097069,
+        "OTHER": 0.051656,
+        "PREP": 0.097159,
+        "PUNCT": 0.274742,
+        "SPELL": 0.214583,
+        "VERB:FORM": 0.012394,
+        "VERB:SVA": 0.011127,
+        "VERB:TENSE": 0.035462
+      },
+      "tvd": 0.3364
+    },
+    {
+      "iter": 1,
+      "shares": {
+        "DET": 0.160455,
+        "NOUN:NUM": 0.10389,
+        "ORTH": 0.107342,
+        "OTHER": 0.076775,
+        "PREP": 0.138722,
+        "PUNCT": 0.179039,
+        "SPELL": 0.125013,
+        "VERB:FORM": 0.027115,
+        "VERB:SVA": 0.027216,
+        "VERB:TENSE": 0.054433
+      },
+      "tvd": 0.2145
+    },
+    {
+      "iter": 2,
+      "shares": {
+        "DET": 0.15488,
+        "NOUN:NUM": 0.115664,
+        "ORTH": 0.101564,
+        "OTHER": 0.08482,
+        "PREP": 0.153999,
+        "PUNCT": 0.162921,
+        "SPELL": 0.095395,
+        "VERB:FORM": 0.034809,
+        "VERB:SVA": 0.040427,
+        "VERB:TENSE": 0.055519
+      },
+      "tvd": 0.189
+    },
+    {
+      "iter": 3,
+      "shares": {
+        "DET": 0.158109,
+        "NOUN:NUM": 0.099739,
+        "ORTH": 0.095319,
+        "OTHER": 0.096566,
+        "PREP": 0.154936,
+        "PUNCT": 0.149609,
+        "SPELL": 0.099173,
+        "VERB:FORM": 0.042956,
+        "VERB:SVA": 0.044656,
+        "VERB:TENSE": 0.058937
+      },
+      "tvd": 0.1627
+    }
+  ],
+  "iters": 3,
+  "tvd_after": 0.1627,
+  "tvd_before": 0.3364,
+  "weights": {
+    "case": 0.002748,
+    "det_delete": 0.001591,
+    "det_insert": 0.001326,
+    "det_swap": 0.001326,
+    "noun_num": 0.013738,
+    "prep_delete": 0.003269,
+    "prep_swap": 0.004203,
+    "punct_delete": 0.000726,
+    "punct_insert": 0.000484,
+    "spell": 0.00303,
+    "sva": 0.440439,
+    "verb_form": 0.410751,
+    "verb_tense": 0.090439,
+    "word_delete": 0.014406,
+    "word_dup": 0.011525
+  },
+  "weights_file": "C:\\Users\\91942\\Downloads\\kjsse\\NLP\\IA\\gec-synthetic-study\\configs\\experiments\\e1_precomp_weights.yaml"
+}
