@@ -23,7 +23,8 @@ warmup_ratio: 0.05
 # campaign. 16 x 2 keeps the effective batch at the spec's 32.
 train_batch_size: 16
 eval_batch_size: 32
-epochs: 2                    # DEVIATION D4 from spec's 3 - trimmed GPU budget
+epochs: 3                    # spec 8.1 value (D4 withdrawn: the measured
+                             # 161.5 examples/s makes it affordable)
 stage2_epochs: 2             # synth->real second stage
 stage2_learning_rate: 1.0e-4
 precision: auto              # fp32, or bf16 when compute capability >= 8.0. NEVER fp16 for T5.
@@ -33,7 +34,9 @@ generation:
 keep_checkpoint: true        # local disk is ample (151 GB); Colab sets false
 seeds: [13, 42, 2026]
 data:
-  synthetic_n: 30000         # DEVIATION D4 from spec's 50000 - trimmed GPU budget
+  synthetic_n: 50000         # spec 8.1 value (D4 withdrawn). This is the whole
+                             # base set, so every synthetic condition corrupts
+                             # exactly the same 50,000 sentences.
   val_size: 2000
 
 # --- additions beyond spec 8.1 ---
