@@ -400,3 +400,49 @@ def test_alias_cycle_is_detected(tmp_runs):
     assert all(not r["present"] for r in rows if r["run"] in
                ("e3_synthetic", "e2_clean0.0"))
     assert any("cycle" in w for w in agg.WARNINGS)
+
+
+def _indian_jsonl(processed, n_annotators):
+    rows = [
+        {"id": f"IN-{i:04d}", "src": "I am having a doubt .",
+         "tgt": "I have a doubt .", "refs": ["I have a doubt ."],
+         "is_clean": i % 2 == 0, "n_gold_edits": 1,
+         "n_annotators": n_annotators, "src_len": 5,
+         "source_type": "reddit-manual"}
+        for i in range(1, 11)
+    ]
+    paths.write_jsonl(processed / "indian.jsonl", rows)
+
+
+def test_e5_composition_says_both_annotators_only_when_there_are_two(
+    tmp_runs, monkeypatch, tmp_path
+):
+    """Claiming "both annotators" with one annotator would be a false claim.
+
+    This paragraph is what a reader uses to judge how much weight the control
+    sentences carry, so the wording has to follow the data rather than assume
+    the two-annotator case the spec hoped for.
+    """
+    processed = tmp_path / "processed"
+    processed.mkdir()
+    monkeypatch.setattr(agg.paths, "PROCESSED", processed)
+    d = _write_run(tmp_runs, "e3_real", 13, val_f05=0.4, test_f05=0.4)
+    m = paths.read_json(d / "metrics.json")
+    m["splits"]["indian"] = {
+        "errant": {"precision": 0.35, "recall": 0.36, "f05": 0.35,
+                   "tp": 10, "fp": 18, "fn": 17},
+        "over_correction_rate": 0.4, "n_clean": 5, "n": 10,
+    }
+    paths.write_json(d / "metrics.json", m)
+    rows = agg.collect_runs(tmp_runs)
+
+    _indian_jsonl(processed, 1)
+    one = paths.read_text(agg.table_e5_indian(rows))
+    assert "annotators per sentence: **1**" in one
+    assert "the annotator left unchanged" in one
+    assert "both annotators" not in one
+
+    _indian_jsonl(processed, 2)
+    two = paths.read_text(agg.table_e5_indian(rows))
+    assert "annotators per sentence: **2**" in two
+    assert "both annotators left unchanged" in two

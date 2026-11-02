@@ -414,18 +414,25 @@ def table_e5_indian(rows: list[dict]) -> Path | None:
                 by_type.get(r.get("source_type") or "unspecified", 0) + 1
             )
         n_clean = sum(1 for r in rows_j if r.get("is_clean"))
+        # Say "both annotators" only when there are two. With a single
+        # annotator the claim would be false, and this table is the one a
+        # reader uses to judge how much the control sentences are worth.
+        n_ann = max((int(r.get("n_annotators") or 1) for r in rows_j),
+                    default=1)
+        who = "both annotators" if n_ann >= 2 else "the annotator"
         lines += [
             "## Composition of the Indian English set", "",
             f"- sentences: **{len(rows_j)}**",
-            f"- both annotators left unchanged (control / acceptable usage): "
+            f"- annotators per sentence: **{n_ann}**",
+            f"- {who} left unchanged (control / acceptable usage): "
             f"**{n_clean}** ({n_clean / max(len(rows_j), 1):.0%})",
             "- by `source_type`: "
             + ", ".join(f"`{k}` {v}" for k, v in sorted(by_type.items())),
             "",
             "Over-correction in the table above is measured on the control "
-            "sentences only - those both annotators judged acceptable as "
-            "written. It answers whether the model imposes a prescriptive "
-            "standard on a legitimate variety of English.",
+            f"sentences only - those {who} judged acceptable as written. It "
+            "answers whether the model imposes a prescriptive standard on a "
+            "legitimate variety of English.",
             "",
         ]
 

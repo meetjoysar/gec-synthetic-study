@@ -19,9 +19,9 @@ code wrote, or says `TBD`.
 | 4 | Training: `build_datasets.py`, `train.py`, `predict.py`, `run_experiments.py` | **DONE** — smoke passes on CPU in 1.4 min |
 | 5 | Colab notebook | **DONE** — `notebooks/colab_run.ipynb`, env-var paths, `requirements-colab.txt` (not needed in the end: the local GPU carried the campaign) |
 | 6 | E1–E3 runs (GPU) | **DONE** — E0 + 5 E1 arms + 4 E2 + 4 E3, all seed 13 |
-| 7 | E4 distribution matching | matching loop **DONE** (TVD 0.2502 → 0.1146); `e4_synthetic_matched` **DONE**, `e4_mixed_matched` running |
+| 7 | E4 distribution matching | **DONE** — matching loop (TVD 0.2502 → 0.1146) + both matched runs. Matching costs F0.5 in both arms |
 | 8 | Indian English: template, kappa, E5 | **149 sentences imported + annotated by annotator 1**; all runs already score the `indian` split; E5 table awaits the `e5` stage. Cohen's kappa needs a second annotator |
-| 9 | Aggregation: figures, tables, `RESULTS.md` | **DONE** (skeleton verified all-TBD); figures fill in as runs land |
+| 9 | Aggregation: figures, tables, `RESULTS.md` | **DONE** — 6/6 figures, 12 tables, `RESULTS.md` written from 16/16 runs |
 | 10 | Gradio demo | **DONE** — `app/app.py` + `explain.py`, serves with zero checkpoints and now has real E3 models |
 | 11 | Docs: `README.md`, `CREDITS.md` | **DONE** — final pass after the last `aggregate` |
 
@@ -472,16 +472,33 @@ the mix inside its 10 categories; it cannot add the missing five.
 
 ### Matching the distribution made the model worse
 
-| run | weights | test F0.5 | test P | test R | indian F0.5 |
-|---|---|---:|---:|---:|---:|
-| `e3_synthetic` | default | **0.3413** | 0.4478 | 0.1749 | 0.2078 |
-| `e4_synthetic_matched` | matched (TVD 0.1146) | **0.3194** | 0.4623 | 0.1429 | **0.2194** |
-| `e4_mixed_matched` | matched | TBD | TBD | TBD | TBD |
+| run | weights | val F0.5 | test F0.5 | test P | test R | indian F0.5 |
+|---|---|---:|---:|---:|---:|---:|
+| `e3_synthetic` | default | 0.3399 | **0.3413** | 0.4478 | 0.1749 | 0.2078 |
+| `e4_synthetic_matched` | matched (TVD 0.1146) | 0.3109 | **0.3194** | 0.4623 | 0.1429 | **0.2194** |
+| `e3_mixed` | default | 0.4705 | **0.4580** | 0.5195 | 0.3110 | **0.3678** |
+| `e4_mixed_matched` | matched (TVD 0.1146) | 0.4744 | **0.4472** | 0.5123 | 0.2966 | 0.3556 |
 
-**-0.0219 test F0.5 (-6.4%)**, and again the mechanism is recall: 0.175 ->
-0.143, while precision actually rose slightly (0.448 -> 0.462). Halving the
-distance to the real error distribution made the synthetic-only model
-**more conservative and less useful**.
+Matching costs test F0.5 in **both** arms:
+
+| arm | default | matched | delta | relative |
+|---|---:|---:|---:|---:|
+| synthetic-only | 0.3413 | 0.3194 | **-0.0219** | -6.4% |
+| mixed | 0.4580 | 0.4472 | **-0.0108** | -2.4% |
+
+In both arms the mechanism is **recall**: 0.175 -> 0.143 synthetic-only and
+0.311 -> 0.297 mixed, while precision barely moves (it even rises, 0.448 ->
+0.462, in the synthetic-only arm). Halving the distance to the real error
+distribution made both models **more conservative and less useful**. The
+damage is roughly halved when real data is present, which is what you would
+expect if the real half of the mixture is carrying the model regardless.
+
+One honest wrinkle: `e4_mixed_matched` is **better on val** (0.4744 vs 0.4705)
+and worse on test (0.4472 vs 0.4580). Val and test agreed to within 0.009 at
+every E1 and E2 point, so a 0.015 reversal here is a reminder that these
+single-seed gaps sit close to the noise floor. It does not change the sign of
+the synthetic-only result, which is twice as large and consistent across both
+splits.
 
 **This is the project's clearest negative result**, and it is the third
 independent one pointing the same way:
@@ -489,7 +506,7 @@ independent one pointing the same way:
 - E1: flattening the distribution toward uniform noise also hurt (-0.027 at
   p = 0.2, `e1_p0.2_precomp`).
 - E3: synthetic data neither replaced real data nor supplemented it.
-- E4: matching the real distribution did not rescue it.
+- E4: matching the real distribution did not rescue it, in either arm.
 
 Taken together, **the generator's error-type mix is not the binding
 constraint.** Three separate interventions on that mix - flatten it, match it,
@@ -501,11 +518,90 @@ regardless of which error types are injected into it. Wang et al.'s claim does
 not reproduce at this scale, and the per-category table shows why that is not
 a matching failure: the match succeeded and the model still got worse.
 
-**The Indian English exception, again.** Matching *improved* Indian English
-(0.2078 -> 0.2194, +5.6%) while hurting W&I - the same direction as E3's mixed
-result. Two independent hints that synthetic data aids out-of-domain
-generalisation while doing nothing in-domain. Both are single-seed and small;
-the extra E3 seeds will show whether this survives.
+**The Indian English picture, stated as measured.** Matching *improved* Indian
+English in the synthetic-only arm (0.2078 -> 0.2194, +5.6%) while hurting W&I,
+which is the same direction as E3's mixed-vs-real result. But it **did not**
+reproduce in the mixed arm: 0.3678 -> 0.3556 (-3.3%), worse on both splits.
+
+So the out-of-domain story is **one for and one against**, not a pattern. The
+defensible claim from E3+E4 together is narrower than it first looked:
+
+- E3's `mixed > real` on Indian English (+0.0131) stands on its own.
+- Within E4, distribution matching helps Indian English only when there is no
+  real data in the mixture at all.
+
+Both are single-seed and smaller than the E1 gap already dismissed as noise.
+The extra E3 seeds bound the first; the second has no replicate at all and the
+report must present it as an observation, not a finding.
+
+## E5 results - Indian English (measured, seed 13)
+
+149 sentences hand-collected by the group from public Indian Reddit posts and
+annotated by **one** annotator (65 of them, 44%, judged acceptable as written
+and left unchanged). Scored with the same ERRANT pipeline as W&I.
+
+| model | P | R | F0.5 | over-correction on the 65 control sentences |
+|---|---:|---:|---:|---:|
+| `e3_mixed` | 0.3613 | 0.3966 | **0.3678** | 0.3538 |
+| `e4_mixed_matched` | 0.3490 | 0.3851 | **0.3556** | 0.4000 |
+| `e3_real` | 0.3543 | 0.3563 | **0.3547** | 0.4154 |
+| `e3_synth2real` | 0.3200 | 0.3218 | **0.3204** | 0.3385 |
+| `e4_synthetic_matched` | 0.2414 | 0.1609 | **0.2194** | 0.2769 |
+| `e3_synthetic` | 0.2168 | 0.1782 | **0.2078** | 0.3538 |
+
+Three things to report, in order of how much they matter.
+
+**1. Every model is much worse out of domain.** The best Indian English score
+(0.3678) is **20% below** the same model's W&I test score (0.4580), and the
+ordering of conditions is otherwise preserved. Whatever these models learned,
+it transfers only partly to a variety of English absent from their training
+data. This holds for the real-only model too, so it is a domain-shift result,
+not a synthetic-data result.
+
+**2. The real-only model is the most prescriptive one.** On the 65 sentences
+the annotator judged acceptable as written, `e3_real` changed **41.5%** of
+them - the highest of any model, and 12 points above `e3_synthetic` (35.4%)
+and 14 above `e4_synthetic_matched` (27.7%). Trained exclusively on
+British/American learner writing corrected toward a standard, it imposes that
+standard on usage a speaker of the variety accepts. The synthetic-trained
+models are less prescriptive mostly because they edit less overall, so this is
+a caution rather than a virtue - but the direction is worth stating, because
+"train on real learner data" is normally assumed to be the safe choice and on
+this axis it is the least safe one.
+
+**3. Mixed leads, but only just, and matching does not help here.**
+`e3_mixed` beats `e3_real` by **+0.0131** (+3.7%), the one place in the whole
+study where adding synthetic data shows a visible gain. But
+`e4_mixed_matched` (0.3556) falls *below* `e3_real`, so the gain does not
+survive reweighting the generator toward the real distribution. Single seed,
+small margins: an observation, not a finding, until the extra E3 seeds land.
+
+**Caveats that belong in the report.** One annotator, so Cohen's kappa is
+undefined (spec section 5.5 wants two; `kappa.py` reports `None` with an
+explanation rather than a number). 149 sentences is a small set, and all 149
+come from one source type (`reddit-manual`), so this measures written online
+Indian English, not the variety as a whole.
+
+## Latency (spec section 7.2, measured on `e3_real`)
+
+200 test sentences, `results/tables/latency.csv`:
+
+| device | batch | decode | ms/sentence | sentences/s | peak VRAM |
+|---|---:|---|---:|---:|---:|
+| cuda | 32 | greedy | **18.0** | 55.6 | 368 MB |
+| cuda | 32 | beam 4 | **27.8** | 36.0 | 781 MB |
+| cuda | 1 | greedy | 271.5 | 3.7 | 247 MB |
+| cuda | 1 | beam 4 | 323.0 | 3.1 | 274 MB |
+| cpu | 32 | greedy | 87.7 | 11.4 | - |
+| cpu | 32 | beam 4 | 191.8 | 5.2 | - |
+| cpu | 1 | greedy | 421.6 | 2.4 | - |
+| cpu | 1 | beam 4 | 733.5 | 1.4 | - |
+
+Batching is worth far more than the device: **batch 32 on CPU (87.7 ms) beats
+batch 1 on the GPU (271.5 ms)** by 3x. Beam 4 costs 54% over greedy on GPU and
+119% on CPU. At batch 1 - the interactive case the demo actually runs - a
+60.5M-parameter T5 needs ~0.3 s per sentence on this GPU, which is acceptable
+for a web demo and is the number to quote for deployment, not the batched one.
 
 ## Open issues
 

@@ -1,0 +1,9 @@
+run,device,batch_size,decode,n,total_s,ms_per_sentence,sentences_per_s,peak_vram_mb
+e3_real,cuda,1,greedy,200,54.305,271.52,3.68,247.2
+e3_real,cuda,1,beam4,200,64.608,323.04,3.1,274.0
+e3_real,cuda,32,greedy,200,3.597,17.99,55.6,367.7
+e3_real,cuda,32,beam4,200,5.555,27.78,36.0,780.9
+e3_real,cpu,1,greedy,200,84.312,421.56,2.37,
+e3_real,cpu,1,beam4,200,146.7,733.5,1.36,
+e3_real,cpu,32,greedy,200,17.534,87.67,11.41,
+e3_real,cpu,32,beam4,200,38.365,191.83,5.21,

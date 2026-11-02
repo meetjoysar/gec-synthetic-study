@@ -1,0 +1,93 @@
+{
+  "_meta": {
+    "complete": true,
+    "errant_version": "3.0.2",
+    "schema": 1,
+    "written_at": "2026-11-02T10:45:51Z"
+  },
+  "condition": "mixed",
+  "run": "e4_mixed_matched",
+  "seed": 13,
+  "selection_metric": {
+    "name": "f05",
+    "split": "val",
+    "value": 0.4744
+  },
+  "splits": {
+    "indian": {
+      "avg_edits_per_sentence": 1.2886,
+      "bleu_13a": 84.8245,
+      "bleu_tok": 84.4535,
+      "copy_rate": 0.3691,
+      "cross_check_delta": 0.0,
+      "errant": {
+        "f05": 0.3556,
+        "fn": 107,
+        "fp": 125,
+        "precision": 0.349,
+        "recall": 0.3851,
+        "tp": 67
+      },
+      "errant_raw_log": "results/runs/e4_mixed_matched/seed13/logs/errant_compare.indian.txt",
+      "eval_seconds": 5.2,
+      "n": 149,
+      "n_bleu_excluded": 0,
+      "n_clean": 65,
+      "n_clean_changed": 26,
+      "n_refs": 1,
+      "over_correction_rate": 0.4,
+      "per_category_csv": "results/runs/e4_mixed_matched/seed13/predictions/indian.per_category.csv",
+      "reference_m2": "data/processed/indian.m2"
+    },
+    "test": {
+      "avg_edits_per_sentence": 0.9854,
+      "bleu_13a": 83.1241,
+      "bleu_tok": 82.9817,
+      "copy_rate": 0.4893,
+      "cross_check_delta": 0.0,
+      "errant": {
+        "f05": 0.4472,
+        "fn": 5248,
+        "fp": 2107,
+        "precision": 0.5123,
+        "recall": 0.2966,
+        "tp": 2213
+      },
+      "errant_raw_log": "results/runs/e4_mixed_matched/seed13/logs/errant_compare.test.txt",
+      "eval_seconds": 49.2,
+      "n": 4384,
+      "n_bleu_excluded": 2,
+      "n_clean": 1566,
+      "n_clean_changed": 238,
+      "n_refs": 1,
+      "over_correction_rate": 0.152,
+      "per_category_csv": "results/runs/e4_mixed_matched/seed13/predictions/test.per_category.csv",
+      "reference_m2": "data/processed/test.m2"
+    },
+    "val": {
+      "avg_edits_per_sentence": 1.071,
+      "bleu_13a": 81.391,
+      "bleu_tok": 81.3518,
+      "copy_rate": 0.474,
+      "cross_check_delta": 0.0,
+      "errant": {
+        "f05": 0.4744,
+        "fn": 2497,
+        "fp": 982,
+        "precision": 0.5415,
+        "recall": 0.3172,
+        "tp": 1160
+      },
+      "errant_raw_log": "results/runs/e4_mixed_matched/seed13/logs/errant_compare.val.txt",
+      "eval_seconds": 26.6,
+      "n": 2000,
+      "n_bleu_excluded": 1,
+      "n_clean": 663,
+      "n_clean_changed": 88,
+      "n_refs": 1,
+      "over_correction_rate": 0.1327,
+      "per_category_csv": "results/runs/e4_mixed_matched/seed13/predictions/val.per_category.csv",
+      "reference_m2": "data/processed/val.m2"
+    }
+  }
+}
