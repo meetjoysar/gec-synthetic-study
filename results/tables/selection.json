@@ -34,10 +34,14 @@
     "e2_clean0.33/seed13": {
       "val_f05": 0.2722,
       "value": 0.33
+    },
+    "e2_clean0.5/seed13": {
+      "val_f05": 0.2209,
+      "value": 0.5
     }
   },
   "e2_val_f05": 0.3399,
   "metric": "errant.f05",
   "selected_on": "val",
-  "written_at": "2026-11-02T08:30:27Z"
+  "written_at": "2026-11-02T08:48:05Z"
 }

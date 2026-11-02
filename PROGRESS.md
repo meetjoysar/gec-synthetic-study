@@ -342,6 +342,41 @@ and refuses to start when another `gec.run_experiments` / `gec.train` /
 `run_campaign.py` process exists, overridable only with `--allow-concurrent`.
 Covered by tests. **Never wait on a native Windows PID from Git Bash.**
 
+## E2 results - the clean:noisy balance (measured)
+
+| run | clean_ratio | val P | val R | **val F0.5** | test F0.5 | over-corr | edits/sent | copy rate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `e2_clean0.0` | 0.0 | 0.4530 | 0.1701 | **0.3399** | 0.3413 | 0.1475 | 0.67 | 0.577 |
+| `e2_clean0.2` | 0.2 | 0.4546 | 0.1397 | 0.3134 | 0.3046 | 0.1181 | 0.53 | 0.645 |
+| `e2_clean0.33` | 0.33 | 0.4508 | 0.1053 | 0.2722 | 0.2747 | 0.1009 | 0.42 | 0.712 |
+| `e2_clean0.5` | 0.5 | 0.4582 | 0.0719 | 0.2209 | 0.2252 | 0.0690 | 0.29 | 0.790 |
+
+Selected: **clean_ratio = 0.0** (val F0.5 0.3399).
+
+**The finding, and it is sharp.** Read the three trends together:
+
+- **Precision is flat**: 0.4530, 0.4546, 0.4508, 0.4582. Identity pairs buy
+  essentially *no* precision.
+- **Recall collapses**: 0.1701 -> 0.0719, less than half.
+- **Over-correction falls monotonically**: 0.1475 -> 0.0690, halved.
+- **F0.5 falls monotonically**: 0.3399 -> 0.2209.
+
+So Koo et al.'s "balanced clean/noisy data" claim is **half right, and the
+wrong half matters**. Balancing does reduce over-correction exactly as they
+report - it halves it - but it does so purely by making the model *refuse to
+edit* (copy rate 0.577 -> 0.790, edits per sentence 0.67 -> 0.29), not by
+making its edits better. Precision does not move. Under F0.5 that is a straight
+loss.
+
+**Report-worthy consequence:** over-correction and F0.5 trade off directly
+here, so a study that reports only over-correction - or only BLEU, which barely
+moves either (see E1) - would present a net-harmful intervention as a
+beneficial one. This is E0's argument arriving from a second direction.
+
+Spec section 7.3 predicted over-correction would fall as `clean_ratio` rose,
+and it does, monotonically: the prediction **held**. But the spec's framing
+treats that as desirable, and measured under F0.5 it is not.
+
 ## Open issues
 
 - [ ] `Downloads/CLAUDE.md` and `Downloads/PROJECT_SPEC.md` are stray byte-identical copies.
