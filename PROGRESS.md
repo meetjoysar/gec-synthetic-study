@@ -213,6 +213,50 @@ Per-run values are written to `results/runs/<run>/seed<k>/config.yaml` and
 | Full remaining grid (E1–E4, single seed) | ~5.3 h ideal / ~6.5 h realistic |
 | Per-run detail | `results/runs/_timing.jsonl` |
 
+## Observations for the report (from E1 arm 1, e1_p0.1)
+
+**1. BLEU is almost blind to the improvement F0.5 measures.** On `test`:
+
+| | F0.5 | BLEU(13a) |
+|---|---:|---:|
+| E0 copy baseline | 0.0000 | 80.03 |
+| e1_p0.1 (synthetic-only) | **0.2986** | 80.53 |
+
+A system that goes from correcting *nothing* to a usable 0.30 F0.5 moves BLEU by
+**+0.5 points**. This is a sharper version of the E0 argument than the copy
+baseline alone and the strongest single piece of evidence for the Koo et al.
+critique. Figure 1 should show both bars side by side.
+
+**2. Val loss rises after epoch 1 — the models overfit.**
+`val_loss_per_epoch = [0.4569, 0.4750, 0.4932]` for `e1_p0.1`.
+
+Spec §8.1 says to evaluate val loss each epoch and **keep the final model**, so
+this is spec-compliant and we are not changing it mid-campaign: every condition
+is affected identically, so the between-condition comparison — which *is* the
+research question — stays valid. But it should be stated in the report, and it
+means our absolute F0.5 figures are probably a little below what early stopping
+would give. Note also that rising cross-entropy does not strictly imply falling
+F0.5 for a generation task, so this is a caution, not a correction.
+
+**3. Per-category F0.5 tracks what the generator produces.** From
+`e1_p0.1`'s test per-category CSV:
+
+| category | gold support | F0.5 | generator share vs real |
+|---|---:|---:|---|
+| SPELL | 387 | **0.5621** | 18.0% vs 3.8% real — heavily over-produced |
+| ORTH | 352 | 0.3747 | 8.8% vs 4.9% — over-produced |
+| DET | 796 | 0.3693 | 10.0% vs 11.6% — well matched |
+| PUNCT | 1478 | 0.2878 | 24.9% vs 17.6% — over-produced |
+| PREP | 740 | 0.2733 | 7.4% vs 10.0% — slightly under |
+| VERB:TENSE | 473 | 0.2349 | 2.3% vs 6.2% — under-produced |
+| OTHER | 980 | 0.1020 | 20.9% vs 13.1% |
+| VERB (generic) | 402 | **0.0664** | the generator cannot produce this at all |
+
+The model is best at exactly the categories the generator over-produces and
+worst at those it cannot produce. That is direct, per-category evidence for
+Wang et al.'s distribution-matching claim, and it makes E4 the most interesting
+experiment in the set rather than a formality.
+
 ## Open issues
 
 - [ ] `Downloads/CLAUDE.md` and `Downloads/PROJECT_SPEC.md` are stray byte-identical copies.
