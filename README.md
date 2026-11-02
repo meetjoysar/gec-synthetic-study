@@ -116,6 +116,7 @@ all work together.
 # 6. Tables, figures and RESULTS.md.
 & $PY -m gec.evaluate --latency --run results/runs/e3_real/seed13
 & $PY -m gec.aggregate
+& $PY scripts/audit_results.py    # re-checks every number against metrics.json
 
 # 7. The demo.
 & $PY app/app.py
@@ -177,6 +178,14 @@ has a hard assertion refusing to read any `test` metric, experiment YAMLs
 reference `${select.e1_best_p}` rather than hardcoded numbers, and
 `selection.json` records every candidate's **val** score so the choice is
 auditable.
+
+**Every reported number is re-checked against the run that produced it.**
+`scripts/audit_results.py` parses the rendered `RESULTS.md`, re-reads each
+`metrics.json` (following `alias_of` pointers), and compares every cell -
+without going through `aggregate.py` at all. It also verifies that every linked
+figure and table exists. It currently checks **126 numbers** and exits non-zero
+on any mismatch; `tests/test_audit_results.py` doctors single cells to prove
+the auditor can actually fail.
 
 **No module calls bare `open()`.** Python 3.10 on Windows defaults to cp1252
 and the W&I essays are full of curly quotes and accents. Everything goes

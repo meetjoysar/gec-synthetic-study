@@ -603,6 +603,27 @@ batch 1 on the GPU (271.5 ms)** by 3x. Beam 4 costs 54% over greedy on GPU and
 60.5M-parameter T5 needs ~0.3 s per sentence on this GPU, which is acceptable
 for a web demo and is the number to quote for deployment, not the batched one.
 
+## Audit: every RESULTS.md number re-checked independently
+
+`scripts/audit_results.py` re-reads the rendered `results/RESULTS.md`, loads
+each run's `metrics.json` (following `alias_of` pointers), and compares every
+cell - **without going through `aggregate.py`**, so a bug in the report writer
+cannot hide behind the report writer. It also checks that every linked figure
+and table exists and that the completeness claim matches the directories on
+disk.
+
+```
+$ python scripts/audit_results.py
+[audit] checked 126 reported number(s) against metrics.json
+[audit] OK: every number in RESULTS.md matches the run that produced it
+```
+
+An auditor that cannot fail would be worse than none at all, so
+`tests/test_audit_results.py` doctors a single cell (F0.5, precision, BLEU,
+over-correction in turn), deletes a `metrics.json`, and breaks a link, and
+requires a non-zero exit each time. `TBD` cells are accepted: an unfinished run
+rendering as `TBD` is honest, not a mismatch.
+
 ## Open issues
 
 - [ ] `Downloads/CLAUDE.md` and `Downloads/PROJECT_SPEC.md` are stray byte-identical copies.
