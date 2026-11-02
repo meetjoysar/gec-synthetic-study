@@ -54,8 +54,30 @@ def annotator():
     return errant.load("en")
 
 
+def is_annotated(df):
+    """Boolean mask: rows where BOTH annotators have filled their column.
+
+    The group's workflow is "one person writes every ``source``, then the two
+    annotators fill their own column independently" (see
+    ``data_manual/README.md``), so the file legitimately spends time with
+    sources present and annotations missing. Those rows are **pending**, not
+    broken: they must not be validation errors, must not count toward the
+    :data:`MIN_REAL_ROWS` threshold, and must not reach
+    ``errant_parallel`` - an empty annotation line would make it drop the
+    block and desynchronise the M2 files.
+    """
+    return (
+        (df["annotator1"].astype(str).str.strip() != "")
+        & (df["annotator2"].astype(str).str.strip() != "")
+    )
+
+
 def load_indian_tsv(path: Path | str):
-    """Read the TSV, returning ``(all_rows, real_rows)`` as DataFrames.
+    """Read the TSV, returning ``(all_rows, ready_rows)`` as DataFrames.
+
+    ``ready_rows`` excludes both the ``EXAMPLE-`` demonstration rows and any
+    row still awaiting annotation, so every consumer sees only rows that are
+    actually usable.
 
     ``keep_default_na=False`` matters: without it a sentence consisting of the
     literal word ``NA``, ``None`` or ``null`` becomes ``NaN`` and silently
@@ -67,8 +89,19 @@ def load_indian_tsv(path: Path | str):
         path, sep="\t", dtype=str, keep_default_na=False, encoding="utf-8"
     )
     df.columns = [c.strip() for c in df.columns]
+    for col in COLUMNS:
+        if col not in df.columns:
+            df[col] = ""
     real = df[~df["id"].astype(str).str.startswith(EXAMPLE_PREFIX)].reset_index(drop=True)
-    return df, real
+    ready = real[is_annotated(real)].reset_index(drop=True)
+    return df, ready
+
+
+def pending_count(path: Path | str) -> tuple[int, int]:
+    """``(n_ready, n_pending)`` among the real (non-EXAMPLE) rows."""
+    all_rows, ready = load_indian_tsv(path)
+    real = all_rows[~all_rows["id"].astype(str).str.startswith(EXAMPLE_PREFIX)]
+    return len(ready), len(real) - len(ready)
 
 
 def validate(df) -> list[str]:
@@ -90,11 +123,33 @@ def validate(df) -> list[str]:
     if (ids == "").any():
         problems.append(f"{int((ids == '').sum())} row(s) have an empty id")
 
-    for col in ("source", "annotator1", "annotator2"):
-        blank = df[df[col].astype(str).str.strip() == ""]
-        if len(blank):
-            which = blank["id"].tolist()[:8]
-            problems.append(f"{len(blank)} row(s) have an empty '{col}' (ids: {which})")
+    # An empty source is always an error: there is nothing to annotate.
+    blank_src = df[df["source"].astype(str).str.strip() == ""]
+    if len(blank_src):
+        problems.append(
+            f"{len(blank_src)} row(s) have an empty 'source' "
+            f"(ids: {blank_src['id'].tolist()[:8]})"
+        )
+
+    # Missing ANNOTATIONS are a normal intermediate state, not an error: the
+    # workflow is to write every source first, then have the two annotators
+    # fill their own column independently. Report them as pending so the group
+    # can see progress without the validator crying wolf.
+    real = df[~df["id"].astype(str).str.startswith(EXAMPLE_PREFIX)]
+    pending = real[~is_annotated(real)]
+    if len(pending):
+        problems.append(
+            f"PENDING (not an error): {len(pending)} real row(s) await annotation "
+            f"(ids: {pending['id'].tolist()[:8]}). They do not count toward the "
+            f"{MIN_REAL_ROWS}-row threshold until BOTH annotator columns are filled."
+        )
+
+    # An EXAMPLE- row ships complete, so a gap there IS a problem.
+    ex = df[df["id"].astype(str).str.startswith(EXAMPLE_PREFIX)]
+    for col in ("annotator1", "annotator2"):
+        bad = ex[ex[col].astype(str).str.strip() == ""]
+        if len(bad):
+            problems.append(f"{len(bad)} EXAMPLE- row(s) have an empty '{col}'")
 
     # The classic hand-edited-TSV bug: a literal tab or newline inside a field
     # silently shifts every later column.
@@ -182,18 +237,21 @@ def report(tsv: Path | str, out: Path | str | None = None, strict: bool = False)
     for p in problems:
         print(f"[kappa] {p}")
 
-    n_real = len(real)
-    n_example = len(all_rows) - n_real
-    print(f"[kappa] {n_real} real row(s) + {n_example} EXAMPLE- row(s) in "
-          f"{paths.rel(tsv)}")
+    n_real = len(real)            # `real` is now READY rows (both annotations)
+    n_ready, n_pending = pending_count(tsv)
+    n_example = len(all_rows) - (n_ready + n_pending)
+    print(f"[kappa] {paths.rel(tsv)}: {n_ready} ready, {n_pending} pending "
+          f"annotation, {n_example} EXAMPLE- row(s)")
 
     if n_real < MIN_REAL_ROWS:
         payload = {
             "skipped": True,
-            "n_real_rows": n_real,
+            "n_real_rows": n_ready,
+            "n_pending_annotation": n_pending,
             "n_example_rows": n_example,
             "reason": (
-                f"only {n_real} real rows; at least {MIN_REAL_ROWS} are needed for a "
+                f"only {n_ready} fully annotated rows "
+                f"({n_pending} more await annotation); at least {MIN_REAL_ROWS} are needed for a "
                 "meaningful kappa. The group writes these sentences (spec rule 2.3); "
                 "see data_manual/README.md. E5 renders as TBD until then."
             ),
@@ -242,7 +300,9 @@ def report(tsv: Path | str, out: Path | str | None = None, strict: bool = False)
           f"(raw agreement {payload.get('sentence_raw_agreement')})")
     print(f"[kappa] wrote {paths.rel(out)}")
 
-    if strict and any(not p.startswith("WARNING") for p in problems):
+    if strict and any(
+        not p.startswith(("WARNING", "PENDING")) for p in problems
+    ):
         raise SystemExit(1)
     return payload
 

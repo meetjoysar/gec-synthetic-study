@@ -1,7 +1,8 @@
 {
   "n_example_rows": 5,
+  "n_pending_annotation": 0,
   "n_real_rows": 0,
-  "reason": "only 0 real rows; at least 20 are needed for a meaningful kappa. The group writes these sentences (spec rule 2.3); see data_manual/README.md. E5 renders as TBD until then.",
+  "reason": "only 0 fully annotated rows (0 more await annotation); at least 20 are needed for a meaningful kappa. The group writes these sentences (spec rule 2.3); see data_manual/README.md. E5 renders as TBD until then.",
   "skipped": true,
   "validation_problems": []
 }

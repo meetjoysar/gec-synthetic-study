@@ -671,7 +671,11 @@ def prepare_indian(tsv: Path | None = None) -> dict:
     if not tsv.exists():
         raise FileNotFoundError(f"{paths.rel(tsv)} is missing (the template ships with the repo)")
 
+    # `real` here is READY rows only: both annotator columns filled. Rows still
+    # awaiting annotation are excluded, because an empty annotation line would
+    # make errant_parallel drop the block and desynchronise the M2 files.
     all_rows, real = kappa.load_indian_tsv(tsv)
+    n_ready, n_pending = kappa.pending_count(tsv)
     problems = kappa.validate(all_rows)
     for p in problems:
         print(f"[indian] VALIDATION: {p}")
@@ -679,14 +683,18 @@ def prepare_indian(tsv: Path | None = None) -> dict:
     skip_marker = paths.PROCESSED / "indian.skip"
     if len(real) < kappa.MIN_REAL_ROWS:
         msg = (
-            f"only {len(real)} real rows (need >= {kappa.MIN_REAL_ROWS}); "
-            "E5 will be skipped until the group writes more. "
-            "EXAMPLE- rows are excluded by design (spec 2.3)."
+            f"only {n_ready} fully annotated rows (need >= {kappa.MIN_REAL_ROWS}); "
+            f"{n_pending} more await annotation. E5 stays skipped until BOTH "
+            "annotator columns are filled. EXAMPLE- rows are excluded by design "
+            "(spec 2.3)."
         )
         print(f"[indian] WARNING: {msg}")
         paths.ensure_dirs()
-        paths.write_json(skip_marker, {"skipped": True, "n_real_rows": len(real), "reason": msg})
-        return {"skipped": True, "n_real_rows": len(real), "reason": msg}
+        paths.write_json(skip_marker, {"skipped": True, "n_real_rows": n_ready,
+                                       "n_pending_annotation": n_pending,
+                                       "reason": msg})
+        return {"skipped": True, "n_real_rows": n_ready,
+                "n_pending_annotation": n_pending, "reason": msg}
 
     if skip_marker.exists():
         skip_marker.unlink()
@@ -733,8 +741,9 @@ def prepare_indian(tsv: Path | None = None) -> dict:
     stats = {
         "split": "indian",
         "n": len(rows),
-        "n_real_rows": len(real),
-        "n_example_rows": len(all_rows) - len(real),
+        "n_real_rows": n_ready,
+        "n_pending_annotation": n_pending,
+        "n_example_rows": len(all_rows) - (n_ready + n_pending),
         "n_clean_both": sum(r["is_clean"] for r in rows),
         "categories": dict(Counter(r["category"] for r in rows).most_common()),
         "source_file": paths.rel(tsv),

@@ -78,6 +78,16 @@ $PY = "C:\Users\91942\miniconda3\envs\gec\python.exe"
 $env:PYTHONNOUSERSITE = "1"
 ```
 
+### Writing sources first is fine
+
+The tooling expects the workflow above: all the `source` sentences written
+first, annotator columns filled in later. A row with a `source` but empty
+annotator columns is reported as **pending annotation**, not as an error, and it
+does **not** count toward the 20-row threshold until *both* annotator columns
+are filled. So you can commit 150 sources straight away and annotate over
+several sessions; `python -m gec.kappa` will tell you how many are ready and how
+many are still pending each time you run it.
+
 **1. Validate and measure agreement** — run this after every editing session:
 
 ```powershell
@@ -115,6 +125,22 @@ it matches **either** annotator.
 The E5 table lands in `results/tables/e5_indian_english.md`.
 
 ---
+
+## Control sentences come for free
+
+You do not need a separate column or flag for these. If you include sentences
+you consider **acceptable** Indian English and both annotators copy the source
+into their column unchanged, the pipeline already:
+
+- marks the row `is_clean` (both annotations identical to the source), and
+- reports **over-correction** on exactly those rows in the E5 table.
+
+That measures something nothing else in the project does: whether the model
+imposes a prescriptive standard on a legitimate variety of English by
+"correcting" sentences that were fine. Around 20-25 such sentences is plenty.
+`EXAMPLE-004` ("Please revert back to me soon.") shows the annotator-disagreement
+case; a control sentence is the case where both annotators agree to change
+nothing.
 
 ## A note for the report
 

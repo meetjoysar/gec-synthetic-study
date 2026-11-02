@@ -263,7 +263,14 @@ experiment in the set rather than a formality.
       The one at the `Downloads` root applies this project's instructions to the **entire**
       Downloads tree. Worth deleting — **ask the user first** (spec §2.4).
 - [ ] The group must write ~150 Indian English sentences with two independent annotators.
-      Template ships in Phase 8a; E5 stays `TBD` until >= 20 real rows exist.
+      Template ships in Phase 8a; E5 stays `TBD` until >= 20 **fully annotated** rows
+      exist. Sources may be committed before annotation: such rows report as
+      "pending annotation", not as errors, and do not count toward the threshold.
+      A harvesting collector (candidates from an open Reddit dataset) was considered
+      and **dropped**: `SocialGrep/one-year-of-r-india` ships only a loading script
+      whose data host (`exports.socialgrep.com`) no longer resolves in DNS, and
+      `datasets 4.0.0` cannot execute remote loading scripts in any case. The set
+      stays group-written, exactly as spec section 5.5 intends.
 - [ ] GPU campaign not yet approved with measured numbers. The `--timing-probe` run comes
       first, then the hours get restated before anything long starts.
 - [ ] Verb errors are structurally hard for the generator to produce (15.8% real vs 4.2%
