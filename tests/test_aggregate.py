@@ -446,3 +446,30 @@ def test_e5_composition_says_both_annotators_only_when_there_are_two(
     two = paths.read_text(agg.table_e5_indian(rows))
     assert "annotators per sentence: **2**" in two
     assert "both annotators left unchanged" in two
+
+
+def test_tables_only_keeps_existing_figure_links(tmp_runs, monkeypatch):
+    """``--tables-only`` must not empty the Figures section of RESULTS.md.
+
+    The campaign runs ``--tables-only`` between stages to refresh
+    selection.json. It rebuilt RESULTS.md from an empty figure dict, so every
+    selection step silently stripped all six figure links out of the report.
+    """
+    _write_run(tmp_runs, "e3_real", 13, val_f05=0.4, test_f05=0.4)
+    for name in ("e0_bleu_vs_f05", "e1_noise_curve", "e2_clean_ratio",
+                 "e3_conditions", "e4_error_types", "e3_per_category"):
+        (paths.FIGURES / f"{name}.png").write_bytes(b"\x89PNG\r\n")
+
+    assert agg.main(["--tables-only"]) == 0
+
+    text = paths.read_text(paths.RESULTS / "RESULTS.md")
+    for name in ("e0_bleu_vs_f05", "e1_noise_curve", "e2_clean_ratio",
+                 "e3_conditions", "e4_error_types", "e3_per_category"):
+        assert f"figures/{name}.png" in text, f"{name} link was dropped"
+
+
+def test_tables_only_marks_absent_figures_tbd(tmp_runs):
+    _write_run(tmp_runs, "e3_real", 13, val_f05=0.4, test_f05=0.4)
+    assert agg.main(["--tables-only"]) == 0
+    text = paths.read_text(paths.RESULTS / "RESULTS.md")
+    assert "`e1_noise_curve`: **TBD**" in text

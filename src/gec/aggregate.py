@@ -823,6 +823,84 @@ def _fmt(v: Any, nd: int = 4) -> str:
     return str(v)
 
 
+def _section_e3_e4(rows: list[dict]) -> list[str]:
+    """Restate the E3 comparison and the E4 matching result, numbers only.
+
+    The main table already carries every metric, but the two questions the
+    project exists to answer are *differences* between particular rows, and a
+    reader should not have to compute them by hand from a 16-row table. Spec
+    section 11 keeps this file free of interpretation, so these are deltas and
+    nothing else.
+    """
+    by: dict[str, dict] = {}
+    for r in rows:
+        if r.get("present") and r.get("seed") == 13:
+            by[str(r["run"])] = r
+
+    lines: list[str] = []
+    ref = by.get("e3_real")
+    if ref and ref.get("test_f05") is not None:
+        base = float(ref["test_f05"])
+        lines += [
+            "## E3 - the main comparison (test, seed 13)", "",
+            "Differences are against `e3_real`. Val-side numbers are in "
+            "[summary.csv](tables/summary.csv).", "",
+            "| condition | test F0.5 | delta vs real | relative | test R | "
+            "indian F0.5 |",
+            "|---|---:|---:|---:|---:|---:|",
+        ]
+        for run in ("e3_synthetic", "e3_real", "e3_mixed", "e3_synth2real"):
+            r = by.get(run)
+            if not r or r.get("test_f05") is None:
+                lines.append(f"| {run} | TBD | TBD | TBD | TBD | TBD |")
+                continue
+            f = float(r["test_f05"])
+            d = f - base
+            rel = "-" if run == "e3_real" else f"{d / base * 100:+.1f}%"
+            dd = "-" if run == "e3_real" else f"{d:+.4f}"
+            lines.append(
+                f"| {run} | {f:.4f} | {dd} | {rel} | "
+                f"{_fmt(r.get('test_r'))} | {_fmt(r.get('indian_f05'))} |"
+            )
+        lines.append("")
+
+    tvd = paths.TABLES / "e4_tvd.csv"
+    pairs = [("e3_synthetic", "e4_synthetic_matched"),
+             ("e3_mixed", "e4_mixed_matched")]
+    if any(by.get(b) for _, b in pairs):
+        lines += ["## E4 - distribution matching (test, seed 13)", ""]
+        if tvd.exists():
+            rows_tvd = [l.split(",") for l in
+                        paths.read_lines(tvd)[1:] if l.strip()]
+            if rows_tvd:
+                first, best = rows_tvd[0], min(rows_tvd, key=lambda c: float(c[1]))
+                lines += [
+                    f"Total variation distance to the real error-type "
+                    f"distribution: **{float(first[1]):.4f}** at iteration "
+                    f"{first[0]} (default weights) -> **{float(best[1]):.4f}** "
+                    f"at iteration {best[0]} (chosen). Per-iteration values in "
+                    "[e4_tvd.csv](tables/e4_tvd.csv), per-category shares in "
+                    "[e4_distribution.csv](tables/e4_distribution.csv).", "",
+                ]
+        lines += [
+            "| arm | default weights | matched weights | delta | relative |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        for a, b in pairs:
+            ra, rb = by.get(a), by.get(b)
+            if not ra or not rb or ra.get("test_f05") is None \
+                    or rb.get("test_f05") is None:
+                lines.append(f"| {a} -> {b} | TBD | TBD | TBD | TBD |")
+                continue
+            fa, fb = float(ra["test_f05"]), float(rb["test_f05"])
+            lines.append(
+                f"| {a} -> {b} | {fa:.4f} | {fb:.4f} | {fb - fa:+.4f} | "
+                f"{(fb - fa) / fa * 100:+.1f}% |"
+            )
+        lines.append("")
+    return lines
+
+
 def write_results_md(rows: list[dict], figures: dict[str, Path | None]) -> Path:
     """Auto-generate ``results/RESULTS.md``: numbers only, no interpretation."""
     present = [r for r in rows if r.get("present")]
@@ -928,6 +1006,8 @@ def write_results_md(rows: list[dict], figures: dict[str, Path | None]) -> Path:
             "`p` while silently dropping the weights half of the choice.", "",
         ]
 
+    lines += _section_e3_e4(rows)
+
     lines += ["## Figures", ""]
     for name, p in figures.items():
         lines.append(
@@ -997,22 +1077,33 @@ def main(argv: list[str] | None = None) -> int:
     for problem in sanity_checks(rows):
         _warn(problem)
 
+    builders = [
+        ("e0_bleu_vs_f05", lambda: fig_e0_bleu_vs_f05(rows)),
+        ("e1_noise_curve", lambda: fig_e1_noise_curve(rows)),
+        ("e2_clean_ratio", lambda: fig_e2_clean_ratio(rows)),
+        ("e3_conditions", lambda: fig_e3_conditions(rows)),
+        ("e4_error_types", fig_e4_error_types),
+        ("e3_per_category", lambda: fig_e3_per_category(rows)),
+    ]
     figures: dict[str, Path | None] = {}
-    if not args.tables_only:
-        for name, fn in [
-            ("e0_bleu_vs_f05", lambda: fig_e0_bleu_vs_f05(rows)),
-            ("e1_noise_curve", lambda: fig_e1_noise_curve(rows)),
-            ("e2_clean_ratio", lambda: fig_e2_clean_ratio(rows)),
-            ("e3_conditions", lambda: fig_e3_conditions(rows)),
-            ("e4_error_types", fig_e4_error_types),
-            ("e3_per_category", lambda: fig_e3_per_category(rows)),
-        ]:
+    made = 0
+    if args.tables_only:
+        # Keep the figure links that are already on disk. --tables-only is how
+        # the campaign writes selection.json between stages, and rebuilding
+        # RESULTS.md from an empty figure dict silently emptied its Figures
+        # section - the report lost all six links every time selection ran.
+        for name, _ in builders:
+            f = paths.FIGURES / f"{name}.png"
+            figures[name] = f if f.exists() else None
+    else:
+        for name, fn in builders:
             try:
                 figures[name] = fn()
             except Exception as exc:  # noqa: BLE001 - one bad figure must not cost the rest
                 _warn(f"figure {name} raised {type(exc).__name__}: {exc}")
                 traceback.print_exc()
                 figures[name] = None
+        made = sum(1 for f in figures.values() if f)
         try:
             failure_gallery(rows)
         except Exception as exc:  # noqa: BLE001
@@ -1020,8 +1111,11 @@ def main(argv: list[str] | None = None) -> int:
 
     write_results_md(rows, figures)
 
-    made = sum(1 for p in figures.values() if p)
-    print(f"[agg] {made}/{len(figures)} figures written; {len(WARNINGS)} warning(s)")
+    if args.tables_only:
+        kept = sum(1 for f in figures.values() if f)
+        print(f"[agg] tables only; kept {kept}/{len(builders)} existing figure link(s)")
+    else:
+        print(f"[agg] {made}/{len(builders)} figures written; {len(WARNINGS)} warning(s)")
     if args.strict and (WARNINGS or any(not r.get("present") for r in rows)):
         print("[agg] --strict: incomplete results")
         return 1
