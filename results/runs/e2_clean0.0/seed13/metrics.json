@@ -1,0 +1,12 @@
+{
+  "_meta": {
+    "complete": true,
+    "note": "alias - metrics come from the target run; no model retrained",
+    "schema": 1,
+    "written_at": "2026-11-02T05:08:28Z"
+  },
+  "alias_of": "e1_p0.2/seed13",
+  "condition": "synthetic",
+  "run": "e2_clean0.0",
+  "seed": 13
+}

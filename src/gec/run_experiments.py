@@ -109,7 +109,10 @@ def iter_jobs(
                     seed=seed,
                     family=cfg.get("family") or plan,
                     cfg=cfg,
-                    alias_of=_alias_for_seed(cfg.get("alias_of"), seed, name),
+                    alias_of=_alias_for_seed(
+                        cfg.get("alias_of"), seed, name,
+                        needs_checkpoint=bool(cfg.get("keep_checkpoint", True)),
+                    ),
                     needs_train=cfg.get("condition") != "copy",
                     splits=list((cfg.get("eval", {}) or {}).get("splits", ["val", "test"])),
                 )
@@ -117,27 +120,66 @@ def iter_jobs(
     return jobs
 
 
-def _alias_for_seed(alias: str | None, seed: int, config_name: str) -> str | None:
-    """Drop an alias whose target belongs to a different seed.
+def _resolve_alias_chain(alias: str) -> str | None:
+    """Follow ``alias_of`` pointers to the run that actually holds the metrics."""
+    seen: set[str] = set()
+    cur = str(alias)
+    while cur and cur not in seen:
+        seen.add(cur)
+        mp = paths.RUNS / cur / "metrics.json"
+        if not mp.exists():
+            return cur
+        try:
+            nxt = paths.read_json(mp).get("alias_of")
+        except Exception:  # noqa: BLE001
+            return cur
+        if not nxt:
+            return cur
+        cur = str(nxt)
+    return cur
 
-    ``selection.json`` records a *concrete* winner such as
-    ``e2_clean0.33/seed13``, and ``e3_synthetic`` aliases
+
+def _alias_for_seed(
+    alias: str | None,
+    seed: int,
+    config_name: str,
+    needs_checkpoint: bool = False,
+) -> str | None:
+    """Decide whether a run may reuse another instead of training.
+
+    Two conditions must hold, and each failure mode was a real bug:
+
+    **The seeds must match.** ``selection.json`` records a *concrete* winner
+    such as ``e2_clean0.33/seed13``, and ``e3_synthetic`` aliases
     ``${select.e2_best_run}``. Applied naively that makes
-    ``e3_synthetic/seed42`` point at the **seed-13** run, so adding seeds 42 and
-    2026 for error bars would silently produce three identical copies of one
-    run - and figure 4 would report a standard deviation of zero for the
-    synthetic condition, which looks like a result rather than a bug.
+    ``e3_synthetic/seed42`` point at the **seed-13** run, so the extra seeds
+    added for error bars would be three identical copies and figure 4 would
+    report a standard deviation of exactly zero for the synthetic condition.
 
-    An alias is only sound when the target's seed matches the job's. Otherwise
-    the job has to train for real.
+    **The weights must exist if this run needs a checkpoint.** E1 runs set
+    ``keep_checkpoint: false``, so by the time E2 starts, ``e1_p0.2/model`` has
+    been pruned. ``e2_clean0.0`` aliases that E1 run and therefore has no
+    weights either - and if ``e2_clean0.0`` then wins E2, ``e3_synthetic``
+    aliases *it*, leaving ``e3_synth2real``'s warm start and the demo's
+    "Synthetic-only" column with nothing to load. Following the chain and
+    training instead costs one run and keeps both working.
     """
     if not alias:
         return None
+
     m = re.search(r"/seed(\d+)$", str(alias))
     if m and int(m.group(1)) != seed:
         print(f"[run] {config_name}/seed{seed}: not aliasing {alias} "
               f"(target is seed {m.group(1)}); will train instead")
         return None
+
+    if needs_checkpoint:
+        final = _resolve_alias_chain(str(alias))
+        if final and not (paths.RUNS / final / "model" / "config.json").exists():
+            print(f"[run] {config_name}/seed{seed}: not aliasing {alias} "
+                  f"(chain ends at {final}, which has no model/ - needed by "
+                  "stage-2 training and the demo); will train instead")
+            return None
     return alias
 
 

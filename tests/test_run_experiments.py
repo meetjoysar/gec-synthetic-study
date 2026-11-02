@@ -110,11 +110,16 @@ def test_stage2_config_declares_its_warm_start():
     assert job.cfg["stage2"]["init_from"] == "e3_synthetic/seed13"
 
 
-def test_alias_configs_are_recognised():
-    """E2's clean_ratio=0.0 and E3's synthetic arm reuse earlier runs."""
+def test_alias_configs_declare_their_reuse():
+    """E2's clean_ratio=0.0 and E3's synthetic arm are configured to reuse.
+
+    Asserted on the CONFIG, not on the resolved Job: whether an alias actually
+    survives also depends on disk state (seed match, and whether the chain
+    still has weights), which _alias_for_seed decides and its own tests cover.
+    """
     jobs = {j.config: j for j in rx.iter_jobs("e2", [13], resolve=False)}
-    assert jobs["e2_clean0.0"].alias_of is not None
-    assert jobs["e2_clean0.2"].alias_of is None
+    assert jobs["e2_clean0.0"].cfg.get("alias_of")
+    assert not jobs["e2_clean0.2"].cfg.get("alias_of")
 
 
 # --------------------------------------------------------------------------- #
@@ -199,6 +204,7 @@ def test_write_alias_records_the_pointer(tmp_runs):
 def test_alias_jobs_are_free_to_estimate():
     job = [j for j in rx.iter_jobs("e2", [13], resolve=False)
            if j.config == "e2_clean0.0"][0]
+    job.alias_of = "e1_p0.2/seed13"          # set explicitly; see the note above
     minutes, source = rx.estimate_minutes(job)
     assert minutes == 0.0 and "alias" in source
 
@@ -386,9 +392,57 @@ def test_extra_e3_seeds_train_the_synthetic_arm(monkeypatch, tmp_path):
            "e2_best_clean_ratio": 0.33, "e2_best_run": "e2_clean0.33/seed13"}
     monkeypatch.setattr(cfg_mod, "load_selection", lambda: sel)
 
-    seed13 = [j for j in rx.iter_jobs("e3", [13]) if j.config == "e3_synthetic"][0]
     seed42 = [j for j in rx.iter_jobs("e3", [42]) if j.config == "e3_synthetic"][0]
-
-    assert seed13.alias_of == "e2_clean0.33/seed13", "seed 13 may reuse the E2 run"
     assert seed42.alias_of is None, "seed 42 must train its own model"
     assert seed42.needs_train is True
+
+    # The seed rule in isolation: seed 13 passes it, other seeds do not.
+    # (Whether the alias ALSO survives the weights check is covered separately.)
+    assert rx._alias_for_seed("e2_clean0.33/seed13", 13, "e3_synthetic") ==         "e2_clean0.33/seed13"
+    assert rx._alias_for_seed("e2_clean0.33/seed13", 42, "e3_synthetic") is None
+
+
+def test_alias_is_dropped_when_the_chain_has_no_weights(tmp_runs):
+    """E1 prunes its checkpoints, so an alias chain ending there has no model.
+
+    e2_clean0.0 aliases the best E1 run, whose weights are gone by then. If
+    e2_clean0.0 wins E2, e3_synthetic aliases IT -- and e3_synth2real's warm
+    start plus the demo's Synthetic-only column would have nothing to load.
+    """
+    # e1_p0.2: complete, but its model/ was pruned (keep_checkpoint: false).
+    e1 = tmp_runs / "e1_p0.2" / "seed13"
+    e1.mkdir(parents=True)
+    paths.write_json(e1 / "metrics.json", {"_meta": {"complete": True}})
+
+    # e2_clean0.0: an alias of that E1 run, so also weightless.
+    e2 = tmp_runs / "e2_clean0.0" / "seed13"
+    e2.mkdir(parents=True)
+    paths.write_json(e2 / "metrics.json",
+                     {"alias_of": "e1_p0.2/seed13", "_meta": {"complete": True}})
+
+    assert rx._resolve_alias_chain("e2_clean0.0/seed13") == "e1_p0.2/seed13"
+
+    # A run that needs a checkpoint must refuse the alias and train.
+    assert rx._alias_for_seed("e2_clean0.0/seed13", 13, "e3_synthetic",
+                              needs_checkpoint=True) is None
+    # A run that does not need one may still reuse it.
+    assert rx._alias_for_seed("e2_clean0.0/seed13", 13, "e2_clean0.0",
+                              needs_checkpoint=False) == "e2_clean0.0/seed13"
+
+
+def test_alias_is_kept_when_the_chain_does_have_weights(tmp_runs):
+    tgt = tmp_runs / "e2_clean0.33" / "seed13"
+    (tgt / "model").mkdir(parents=True)
+    paths.write_json(tgt / "metrics.json", {"_meta": {"complete": True}})
+    paths.write_json(tgt / "model" / "config.json", {"model_type": "t5"})
+    assert rx._alias_for_seed("e2_clean0.33/seed13", 13, "e3_synthetic",
+                              needs_checkpoint=True) == "e2_clean0.33/seed13"
+
+
+def test_resolve_alias_chain_survives_a_cycle(tmp_runs):
+    for a, b in (("x", "y"), ("y", "x")):
+        d = tmp_runs / a / "seed13"
+        d.mkdir(parents=True)
+        paths.write_json(d / "metrics.json",
+                         {"alias_of": f"{b}/seed13", "_meta": {"complete": True}})
+    assert rx._resolve_alias_chain("x/seed13") in ("x/seed13", "y/seed13")
