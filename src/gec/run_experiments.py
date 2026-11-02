@@ -23,6 +23,7 @@ explicit, informed decision each time rather than one blanket approval.
 from __future__ import annotations
 
 import argparse
+import re
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -108,12 +109,36 @@ def iter_jobs(
                     seed=seed,
                     family=cfg.get("family") or plan,
                     cfg=cfg,
-                    alias_of=cfg.get("alias_of"),
+                    alias_of=_alias_for_seed(cfg.get("alias_of"), seed, name),
                     needs_train=cfg.get("condition") != "copy",
                     splits=list((cfg.get("eval", {}) or {}).get("splits", ["val", "test"])),
                 )
             )
     return jobs
+
+
+def _alias_for_seed(alias: str | None, seed: int, config_name: str) -> str | None:
+    """Drop an alias whose target belongs to a different seed.
+
+    ``selection.json`` records a *concrete* winner such as
+    ``e2_clean0.33/seed13``, and ``e3_synthetic`` aliases
+    ``${select.e2_best_run}``. Applied naively that makes
+    ``e3_synthetic/seed42`` point at the **seed-13** run, so adding seeds 42 and
+    2026 for error bars would silently produce three identical copies of one
+    run - and figure 4 would report a standard deviation of zero for the
+    synthetic condition, which looks like a result rather than a bug.
+
+    An alias is only sound when the target's seed matches the job's. Otherwise
+    the job has to train for real.
+    """
+    if not alias:
+        return None
+    m = re.search(r"/seed(\d+)$", str(alias))
+    if m and int(m.group(1)) != seed:
+        print(f"[run] {config_name}/seed{seed}: not aliasing {alias} "
+              f"(target is seed {m.group(1)}); will train instead")
+        return None
+    return alias
 
 
 def job_status(job: Job) -> str:

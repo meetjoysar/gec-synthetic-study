@@ -354,3 +354,41 @@ def test_campaign_stage_order_is_dependency_correct():
     assert names.index("distribution") < names.index("e4")
     # A complete report must exist before the optional extra seeds.
     assert names.index("aggregate") < names.index("e3_seeds")
+
+
+# --------------------------------------------------------------------------- #
+# Seed-aware aliasing
+# --------------------------------------------------------------------------- #
+
+def test_alias_is_dropped_when_the_target_belongs_to_another_seed():
+    """selection.json records a concrete winner like e2_clean0.33/seed13.
+
+    Applied naively, e3_synthetic/seed42 would alias that seed-13 run, so the
+    extra seeds added for error bars would be three identical copies and
+    figure 4 would report std = 0 for the synthetic condition.
+    """
+    assert rx._alias_for_seed("e2_clean0.33/seed13", 13, "e3_synthetic") == \
+        "e2_clean0.33/seed13"
+    assert rx._alias_for_seed("e2_clean0.33/seed13", 42, "e3_synthetic") is None
+    assert rx._alias_for_seed("e2_clean0.33/seed13", 2026, "e3_synthetic") is None
+
+
+def test_alias_without_a_seed_suffix_is_kept():
+    assert rx._alias_for_seed("some_run", 42, "x") == "some_run"
+    assert rx._alias_for_seed(None, 42, "x") is None
+
+
+def test_extra_e3_seeds_train_the_synthetic_arm(monkeypatch, tmp_path):
+    """End to end through iter_jobs, with a realistic selection.json."""
+    from gec import config as cfg_mod
+
+    sel = {"e1_best_p": 0.2, "e1_best_run": "e1_p0.2/seed13",
+           "e2_best_clean_ratio": 0.33, "e2_best_run": "e2_clean0.33/seed13"}
+    monkeypatch.setattr(cfg_mod, "load_selection", lambda: sel)
+
+    seed13 = [j for j in rx.iter_jobs("e3", [13]) if j.config == "e3_synthetic"][0]
+    seed42 = [j for j in rx.iter_jobs("e3", [42]) if j.config == "e3_synthetic"][0]
+
+    assert seed13.alias_of == "e2_clean0.33/seed13", "seed 13 may reuse the E2 run"
+    assert seed42.alias_of is None, "seed 42 must train its own model"
+    assert seed42.needs_train is True
