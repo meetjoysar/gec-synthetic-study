@@ -56,10 +56,12 @@ row only as a writer id and post label (e.g. `W11 flat-hunting`) in the
 `source_note` column.
 
 Selection was done by humans: the group chose which sentences to include, and
-both independent annotations are the group's own work. Claude Code supplied the
-template, the importer, the validator and the agreement tooling, plus five rows
-whose ids begin `EXAMPLE-` demonstrating the format; those are excluded from
-every computation.
+the annotations are the group's own work. **As submitted, one annotator has
+corrected all 149 rows and the second column is empty**, so E5 scores against a
+single human reference and Cohen's kappa is reported as undefined rather than
+as a number. Claude Code supplied the template, the importer, the validator and
+the agreement tooling, plus five rows whose ids begin `EXAMPLE-` demonstrating
+the format; those are excluded from every computation.
 
 28 rows come from posts the group marked `[sensitive]` and carry
 `notes = "sensitive: do not quote in report"`. Their text is used as evaluation
@@ -147,9 +149,12 @@ Per the project's own rules, Claude Code did **not** write, choose, correct or
 annotate any Indian English test sentence. It produced the TSV template, the
 importer, the validator, the agreement tooling, the per-annotator edit files,
 and five rows marked `EXAMPLE-` that demonstrate the format. The 149 real items
-were collected and selected by the group from public posts, and both sets of
-independent annotations are the group's work - which is what keeps E5 a
-human-made evaluation set.
+were collected and selected by the group from public posts, and the annotations
+are the group's work - which is what keeps E5 a human-made evaluation set. Claude
+Code was asked at one point to produce the annotations itself and declined,
+under this project's own rule reserving them for the group; that is what keeps
+E5 a measure of human judgement rather than of the model's agreement with
+itself.
 
 The importer applies exactly one text transformation, curly quotes and
 apostrophes to straight ones, because T5's SentencePiece vocabulary cannot
