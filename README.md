@@ -8,6 +8,8 @@ K. J. Somaiya School of Engineering
 Group: Suryoday Kumar Saroj (16030726001), Aryan Gole (16030726006), Meet P Joysar (16030726016)
 Faculty: Dr. Grishma Sharma
 
+> **Just want to run the demo?** Read **[HOW_TO_RUN.md](HOW_TO_RUN.md)** instead - a step-by-step walkthrough with the exact commands for this machine, what you should see after each one, and a troubleshooting table.
+
 ---
 
 ## What this is
