@@ -826,43 +826,91 @@ def _fmt(v: Any, nd: int = 4) -> str:
 def _section_e3_e4(rows: list[dict]) -> list[str]:
     """Restate the E3 comparison and the E4 matching result, numbers only.
 
-    The main table already carries every metric, but the two questions the
-    project exists to answer are *differences* between particular rows, and a
-    reader should not have to compute them by hand from a 16-row table. Spec
-    section 11 keeps this file free of interpretation, so these are deltas and
-    nothing else.
+    The main table carries every run at every seed, but the two questions the
+    project exists to answer are *differences* between conditions, and a reader
+    should not have to compute them from a 24-row table. Spec section 11 keeps
+    this file free of interpretation, so these are aggregates and deltas only.
+
+    Differences are **paired by seed** where more than one seed exists. A seed
+    fixes both the weight init and the data order, so the paired difference
+    removes variance common to both conditions; with E3 the unpaired spread
+    (``e3_synthetic`` moves 0.0166 across seeds) is larger than some of the
+    differences being measured, which would otherwise hide them entirely.
     """
-    by: dict[str, dict] = {}
+    import statistics as _st
+
+    by: dict[str, dict[int, dict]] = {}
     for r in rows:
-        if r.get("present") and r.get("seed") == 13:
-            by[str(r["run"])] = r
+        if r.get("present"):
+            by.setdefault(str(r["run"]), {})[int(r["seed"])] = r
+
+    def vals(run: str, key: str) -> dict[int, float]:
+        return {s: float(r[key]) for s, r in sorted(by.get(run, {}).items())
+                if r.get(key) is not None}
+
+    def agg(v: dict[str, float]) -> str:
+        x = list(v.values())
+        if not x:
+            return "TBD"
+        if len(x) == 1:
+            return f"{x[0]:.4f} (n=1)"
+        return f"{_st.mean(x):.4f} +/- {_st.stdev(x):.4f} (n={len(x)})"
 
     lines: list[str] = []
-    ref = by.get("e3_real")
-    if ref and ref.get("test_f05") is not None:
-        base = float(ref["test_f05"])
+    conditions = ("e3_synthetic", "e3_real", "e3_mixed", "e3_synth2real")
+    if any(by.get(c) for c in conditions):
+        n_seeds = max((len(by.get(c, {})) for c in conditions), default=0)
         lines += [
-            "## E3 - the main comparison (test, seed 13)", "",
-            "Differences are against `e3_real`. Val-side numbers are in "
-            "[summary.csv](tables/summary.csv).", "",
-            "| condition | test F0.5 | delta vs real | relative | test R | "
+            "## E3 - the main comparison (test)", "",
+            f"Mean +/- sample standard deviation over {n_seeds} seed(s). The "
+            "`delta` column is the **paired** difference against `e3_real` at "
+            "the same seed, averaged; `same sign` says whether every seed "
+            "agreed on its direction. Per-seed values are in the main table "
+            "above and in [summary.csv](tables/summary.csv).", "",
+            "| condition | test F0.5 | delta vs real (paired) | same sign | "
             "indian F0.5 |",
-            "|---|---:|---:|---:|---:|---:|",
+            "|---|---|---|---|---|",
         ]
-        for run in ("e3_synthetic", "e3_real", "e3_mixed", "e3_synth2real"):
-            r = by.get(run)
-            if not r or r.get("test_f05") is None:
-                lines.append(f"| {run} | TBD | TBD | TBD | TBD | TBD |")
+        ref_t, ref_i = vals("e3_real", "test_f05"), vals("e3_real", "indian_f05")
+        for run in conditions:
+            vt, vi = vals(run, "test_f05"), vals(run, "indian_f05")
+            if not vt:
+                lines.append(f"| {run} | TBD | TBD | TBD | TBD |")
                 continue
-            f = float(r["test_f05"])
-            d = f - base
-            rel = "-" if run == "e3_real" else f"{d / base * 100:+.1f}%"
-            dd = "-" if run == "e3_real" else f"{d:+.4f}"
-            lines.append(
-                f"| {run} | {f:.4f} | {dd} | {rel} | "
-                f"{_fmt(r.get('test_r'))} | {_fmt(r.get('indian_f05'))} |"
-            )
+            if run == "e3_real":
+                delta, sign = "-", "-"
+            else:
+                d = [vt[s] - ref_t[s] for s in sorted(vt) if s in ref_t]
+                if not d:
+                    delta, sign = "TBD", "TBD"
+                else:
+                    delta = (f"{_st.mean(d):+.4f}" if len(d) == 1
+                             else f"{_st.mean(d):+.4f} +/- {_st.stdev(d):.4f}")
+                    sign = ("yes" if all(x > 0 for x in d) or all(x < 0 for x in d)
+                            else "**no**")
+            lines += [f"| {run} | {agg(vt)} | {delta} | {sign} | {agg(vi)} |"]
         lines.append("")
+
+        # The out-of-domain paired differences, where the seeds disagree and
+        # the single-seed number would mislead.
+        if ref_i and len(ref_i) > 1:
+            lines += [
+                "Paired differences against `e3_real` on the Indian English "
+                "split, per seed:", "",
+                "| condition | " + " | ".join(f"seed {s}" for s in sorted(ref_i))
+                + " | mean |",
+                "|---|" + "---|" * (len(ref_i) + 1),
+            ]
+            for run in ("e3_synthetic", "e3_mixed", "e3_synth2real"):
+                vi = vals(run, "indian_f05")
+                d = [vi[s] - ref_i[s] for s in sorted(ref_i) if s in vi]
+                if len(d) != len(ref_i):
+                    continue
+                lines.append(
+                    f"| {run} | " + " | ".join(f"{x:+.4f}" for x in d)
+                    + f" | {_st.mean(d):+.4f} |"
+                )
+            lines.append("")
 
     tvd = paths.TABLES / "e4_tvd.csv"
     pairs = [("e3_synthetic", "e4_synthetic_matched"),
@@ -870,8 +918,7 @@ def _section_e3_e4(rows: list[dict]) -> list[str]:
     if any(by.get(b) for _, b in pairs):
         lines += ["## E4 - distribution matching (test, seed 13)", ""]
         if tvd.exists():
-            rows_tvd = [l.split(",") for l in
-                        paths.read_lines(tvd)[1:] if l.strip()]
+            rows_tvd = [l.split(",") for l in paths.read_lines(tvd)[1:] if l.strip()]
             if rows_tvd:
                 first, best = rows_tvd[0], min(rows_tvd, key=lambda c: float(c[1]))
                 lines += [
@@ -881,13 +928,17 @@ def _section_e3_e4(rows: list[dict]) -> list[str]:
                     f"at iteration {best[0]} (chosen). Per-iteration values in "
                     "[e4_tvd.csv](tables/e4_tvd.csv), per-category shares in "
                     "[e4_distribution.csv](tables/e4_distribution.csv).", "",
+                    "The matched runs use seed 13 only, so these are "
+                    "single-seed differences; the E3 seed spread above is the "
+                    "scale to read them against.", "",
                 ]
         lines += [
             "| arm | default weights | matched weights | delta | relative |",
             "|---|---:|---:|---:|---:|",
         ]
         for a, b in pairs:
-            ra, rb = by.get(a), by.get(b)
+            ra = (by.get(a) or {}).get(13)
+            rb = (by.get(b) or {}).get(13)
             if not ra or not rb or ra.get("test_f05") is None \
                     or rb.get("test_f05") is None:
                 lines.append(f"| {a} -> {b} | TBD | TBD | TBD | TBD |")

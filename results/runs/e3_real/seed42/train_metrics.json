@@ -1,0 +1,30 @@
+{
+  "best_val_loss": 0.253766,
+  "copy_rate": 0.0417,
+  "device": "cuda",
+  "effective_batch_size": 32,
+  "empty_pred_rate": 0.0,
+  "epochs": 3.0,
+  "examples_per_s": 185.65,
+  "final_train_loss": 0.295073,
+  "n_probe": 24,
+  "n_train": 32305,
+  "n_truncated_src": 43,
+  "n_truncated_tgt": 50,
+  "n_val": 1999,
+  "peak_vram_mb": 2789.7,
+  "precision": "bf16",
+  "run": "e3_real",
+  "s_per_step": 0.1724,
+  "seed": 42,
+  "stage": 1,
+  "steps": 3030,
+  "suspect": false,
+  "train_jsonl": "data/processed/realall_s42_8aca286f.jsonl",
+  "val_loss_per_epoch": [
+    0.264265,
+    0.256884,
+    0.253766
+  ],
+  "wall_clock_s": 522.3
+}

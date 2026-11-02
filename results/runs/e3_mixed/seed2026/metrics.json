@@ -1,0 +1,93 @@
+{
+  "_meta": {
+    "complete": true,
+    "errant_version": "3.0.2",
+    "schema": 1,
+    "written_at": "2026-11-02T13:28:15Z"
+  },
+  "condition": "mixed",
+  "run": "e3_mixed",
+  "seed": 2026,
+  "selection_metric": {
+    "name": "f05",
+    "split": "val",
+    "value": 0.4639
+  },
+  "splits": {
+    "indian": {
+      "avg_edits_per_sentence": 1.3289,
+      "bleu_13a": 84.2264,
+      "bleu_tok": 83.8096,
+      "copy_rate": 0.3691,
+      "cross_check_delta": 0.0,
+      "errant": {
+        "f05": 0.3261,
+        "fn": 111,
+        "fp": 135,
+        "precision": 0.3182,
+        "recall": 0.3621,
+        "tp": 63
+      },
+      "errant_raw_log": "results/runs/e3_mixed/seed2026/logs/errant_compare.indian.txt",
+      "eval_seconds": 9.4,
+      "n": 149,
+      "n_bleu_excluded": 0,
+      "n_clean": 65,
+      "n_clean_changed": 26,
+      "n_refs": 1,
+      "over_correction_rate": 0.4,
+      "per_category_csv": "results/runs/e3_mixed/seed2026/predictions/indian.per_category.csv",
+      "reference_m2": "data/processed/indian.m2"
+    },
+    "test": {
+      "avg_edits_per_sentence": 1.0301,
+      "bleu_13a": 83.428,
+      "bleu_tok": 83.2771,
+      "copy_rate": 0.4724,
+      "cross_check_delta": 0.0,
+      "errant": {
+        "f05": 0.4613,
+        "fn": 5106,
+        "fp": 2161,
+        "precision": 0.5215,
+        "recall": 0.3156,
+        "tp": 2355
+      },
+      "errant_raw_log": "results/runs/e3_mixed/seed2026/logs/errant_compare.test.txt",
+      "eval_seconds": 46.9,
+      "n": 4384,
+      "n_bleu_excluded": 2,
+      "n_clean": 1566,
+      "n_clean_changed": 250,
+      "n_refs": 1,
+      "over_correction_rate": 0.1596,
+      "per_category_csv": "results/runs/e3_mixed/seed2026/predictions/test.per_category.csv",
+      "reference_m2": "data/processed/test.m2"
+    },
+    "val": {
+      "avg_edits_per_sentence": 1.076,
+      "bleu_13a": 80.9966,
+      "bleu_tok": 80.9577,
+      "copy_rate": 0.47,
+      "cross_check_delta": 0.0,
+      "errant": {
+        "f05": 0.4639,
+        "fn": 2519,
+        "fp": 1014,
+        "precision": 0.5288,
+        "recall": 0.3112,
+        "tp": 1138
+      },
+      "errant_raw_log": "results/runs/e3_mixed/seed2026/logs/errant_compare.val.txt",
+      "eval_seconds": 25.1,
+      "n": 2000,
+      "n_bleu_excluded": 1,
+      "n_clean": 663,
+      "n_clean_changed": 97,
+      "n_refs": 1,
+      "over_correction_rate": 0.1463,
+      "per_category_csv": "results/runs/e3_mixed/seed2026/predictions/val.per_category.csv",
+      "reference_m2": "data/processed/val.m2"
+    }
+  }
+}

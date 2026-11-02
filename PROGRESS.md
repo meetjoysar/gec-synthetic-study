@@ -18,7 +18,7 @@ code wrote, or says `TBD`.
 | 3 | Evaluation + E0 | **DONE** — E0 test F0.5 = 0.0000, BLEU 80.03 |
 | 4 | Training: `build_datasets.py`, `train.py`, `predict.py`, `run_experiments.py` | **DONE** — smoke passes on CPU in 1.4 min |
 | 5 | Colab notebook | **DONE** — `notebooks/colab_run.ipynb`, env-var paths, `requirements-colab.txt` (not needed in the end: the local GPU carried the campaign) |
-| 6 | E1–E3 runs (GPU) | **DONE** — E0 + 5 E1 arms + 4 E2 + 4 E3, all seed 13 |
+| 6 | E1–E3 runs (GPU) | **DONE** — E0 + 5 E1 arms + 4 E2 + 4 E3; E3 at **3 seeds** (13, 42, 2026), so deviation D6 is withdrawn. 24 runs total |
 | 7 | E4 distribution matching | **DONE** — matching loop (TVD 0.2502 → 0.1146) + both matched runs. Matching costs F0.5 in both arms |
 | 8 | Indian English: template, kappa, E5 | **149 sentences imported + annotated by annotator 1**; all runs already score the `indian` split; E5 table awaits the `e5` stage. Cohen's kappa needs a second annotator |
 | 9 | Aggregation: figures, tables, `RESULTS.md` | **DONE** — 6/6 figures, 12 tables, `RESULTS.md` written from 16/16 runs |
@@ -132,7 +132,7 @@ Recorded as they happen, per spec section 13.
 | D3 | — | Added `src/gec/errant_cli.py` and `src/gec/repro.py` beyond the §4 module list | Each has >=3 consumers. Keeping ERRANT behind a subprocess wrapper means `train.py` never imports spaCy. |
 | ~~D4~~ | `data.synthetic_n: 50000`, `epochs: 3` (§8.1) | **WITHDRAWN** — spec values restored | Was trimmed to 30000/2 on an *analytical* estimate of 55 examples/s. The timing probe measured **161.5/s** (2.9× better) after batch tuning, so the full setting is affordable. No longer a deviation. |
 | ~~D5~~ | E1 sweeps `p ∈ {0.1, 0.2, 0.4, 0.6}` (§7) | **WITHDRAWN** — all four points restored | Same reason as D4. E1 now runs 5 arms: the spec's four noise points plus the pre-compensated arm (D10). |
-| D6 | E3 uses seeds `[13, 42, 2026]` (§7) | E3 uses **seed 13** for now | The only budget cut still standing. Figure 4 carries `n=1` and no error bars, stated plainly in the report and annotated by `aggregate.py`. The extra seeds are a **resumable follow-on** (~2 h): `--plan e3 --seeds 42 2026 --yes` adds them without redoing anything. |
+| D6 | E3 uses seeds `[13, 42, 2026]` (§7) | **WITHDRAWN — all three seeds ran** (173 min) | Was the last budget cut standing. Running it was the right call: the seeds reversed one of the two small conclusions seed 13 had produced (mixed vs real on Indian English) and gave a measured noise floor of ~0.02 F0.5. Figure 4 now carries real error bars. E1/E2/E4/E5 remain seed 13, as spec §7's budget mode prescribes. |
 | D7 | WikiText-103 full train split (§5.4) | `streaming=True` with early stop at 60k sentences (~60–90 MB instead of ~250 MB) | User-confirmed. We need 60k of ~4M sentences; streaming avoids the §2.4 download threshold entirely. |
 | D8 | `datasets` implied for the training path (§3) | Plain `torch.utils.data.Dataset` + `DataCollatorForSeq2Seq`; `datasets` only used for WikiText | Decouples training from Arrow/`huggingface-hub` version churn. `datasets>=4.3` requires `huggingface-hub>=1.31` while `transformers 4.53.1` requires `<1.0`. |
 | D9 | Phase order 0–11 (§10) | Indian-English template moved to **after Phase 2**; `aggregate.py` skeleton moved to **before the first GPU run** | The 150 hand-written sentences are the longest-lead *human* task and must start early. Building the TBD path first verifies it in the hardest case (everything missing). |
@@ -377,58 +377,92 @@ Spec section 7.3 predicted over-correction would fall as `clean_ratio` rose,
 and it does, monotonically: the prediction **held**. But the spec's framing
 treats that as desirable, and measured under F0.5 it is not.
 
-## E3 results - the main comparison (measured, seed 13)
+## E3 results - the main comparison (measured, 3 seeds: 13, 42, 2026)
 
 This is the project's research question: **synthetic-only vs real-only vs
 mixed, same task, same metric.** All four conditions share the selected
 generator settings (p = 0.2, clean_ratio = 0.0) and differ only in training
-data. `e3_synthetic` is an alias of the E2 winner (no retraining);
-`e3_synth2real` warm-starts from it.
+data. At seed 13 `e3_synthetic` is an alias of the E2 winner (no retraining);
+at seeds 42 and 2026 it trains, because aliasing a seed-13 checkpoint under
+another seed's label would have produced three identical "seeds".
 
-| condition | train data | val F0.5 | **test F0.5** | test P | test R | BLEU(13a) | over-corr | indian F0.5 |
-|---|---|---:|---:|---:|---:|---:|---:|---:|
-| `e3_synthetic` | 50k synthetic | 0.3399 | **0.3413** | 0.4478 | 0.1749 | 80.80 | 0.1475 | 0.2078 |
-| `e3_real` | 32.3k W&I | 0.4739 | **0.4563** | 0.5270 | 0.2970 | 83.36 | 0.1462 | 0.3547 |
-| `e3_mixed` | 82.3k both | 0.4705 | **0.4580** | 0.5195 | 0.3110 | 83.41 | 0.1552 | 0.3678 |
-| `e3_synth2real` | synth -> 32.3k W&I | 0.4472 | **0.4440** | 0.5200 | 0.2803 | 82.90 | 0.1398 | 0.3204 |
+Mean +/- sample sd over the three seeds, from
+`results/tables/summary_mean_std.csv`:
 
-Differences against real-only, on test F0.5:
+| condition | train data | **test F0.5** | test P | test R | indian F0.5 |
+|---|---|---:|---:|---:|---:|
+| `e3_synthetic` | 50k synthetic | **0.3366** +/- 0.0093 | 0.4421 | 0.1722 | 0.2149 +/- 0.0067 |
+| `e3_real` | 32.3k W&I | **0.4579** +/- 0.0014 | 0.5285 | 0.2984 | 0.3544 +/- 0.0005 |
+| `e3_mixed` | 82.3k both | **0.4613** +/- 0.0033 | 0.5223 | 0.3144 | 0.3439 +/- 0.0215 |
+| `e3_synth2real` | synth -> 32.3k W&I | **0.4452** +/- 0.0024 | 0.5211 | 0.2814 | 0.3170 +/- 0.0057 |
 
-| comparison | delta | relative |
-|---|---:|---:|
-| synthetic vs real | **-0.1150** | -25.2% |
-| mixed vs real | **+0.0017** | +0.4% |
-| synth->real vs real | **-0.0123** | -2.7% |
+Per-seed test F0.5, because the spread is itself a finding:
+
+| condition | seed 13 | seed 42 | seed 2026 | spread |
+|---|---:|---:|---:|---:|
+| `e3_synthetic` | 0.3413 | 0.3259 | 0.3425 | **0.0166** |
+| `e3_real` | 0.4563 | 0.4588 | 0.4585 | 0.0025 |
+| `e3_mixed` | 0.4580 | 0.4645 | 0.4613 | 0.0065 |
+| `e3_synth2real` | 0.4440 | 0.4437 | 0.4480 | 0.0043 |
+
+**Paired** differences against `e3_real` - same seed, so the same init and the
+same data order, which removes the variance common to both conditions:
+
+| comparison | seed 13 | seed 42 | seed 2026 | mean | same sign |
+|---|---:|---:|---:|---:|---|
+| synthetic - real (test) | -0.1150 | -0.1329 | -0.1160 | **-0.1213** | yes |
+| mixed - real (test) | +0.0017 | +0.0057 | +0.0028 | **+0.0034** | yes |
+| synth->real - real (test) | -0.0123 | -0.0151 | -0.0105 | **-0.0126** | yes |
+| mixed - real (**indian**) | +0.0131 | -0.0160 | -0.0286 | **-0.0105** | **no** |
 
 **Answer to the research question, stated carefully.**
 
 1. **Synthetic data cannot replace real data.** Synthetic-only loses a quarter
-   of its F0.5 (-25.2%), and the loss is almost entirely **recall**: 0.175 vs
-   0.297. Precision holds up far better (0.448 vs 0.527). The synthetic-only
-   model edits half as often (0.66 vs 0.96 edits/sentence, copy rate 0.577 vs
-   0.495) and so simply misses most real learner errors.
-2. **Synthetic data does not supplement real data either.** Mixed beats
-   real-only by **+0.0017** F0.5 - on a single seed that is indistinguishable
-   from zero, and 2.5x smaller than the E1 gap we already called noise. The
-   honest claim is "mixed and real-only are indistinguishable at this scale",
-   **not** "mixing helps". Adding 50k synthetic pairs to 32.3k real ones
-   (2.5x the data, 2.3x the training time) buys nothing measurable in-domain.
-3. **Pre-training on synthetic then fine-tuning on real is actively worse**
-   than just training on real (-2.7%). This is the one result that contradicts
-   common practice directly, and the most likely explanation is scale: at
-   60.5M parameters and 2 epochs there is no capacity shortage for 32.3k real
-   pairs, so stage 1 only installs a bias the fine-tune has to undo.
-4. **The one exception is out of domain.** On the Indian English set, mixed
-   beats real-only by **+0.0131** (+3.7%) - 8x the in-domain gap, and in the
-   same direction. Every condition scores far lower on Indian English than on
-   W&I (0.37 vs 0.46 at best), which is itself a result worth reporting.
+   of its F0.5 (**-0.1213 +/- 0.0101**, -26.5%), consistent across all three
+   seeds and **7.3x** the largest per-condition seed spread. The loss is almost
+   entirely **recall**: 0.172 vs 0.298. Precision holds up far better (0.442 vs
+   0.529). The synthetic-only model edits half as often (0.66 vs 0.96
+   edits/sentence, copy rate 0.577 vs 0.495) and so simply misses most real
+   learner errors. This is the project's firmest result.
+2. **Mixing adds a consistent but very small in-domain gain.** Paired, mixed
+   beats real-only on **all three seeds**: +0.0017, +0.0057, +0.0028, mean
+   **+0.0034 +/- 0.0021** (+0.7%). Three of three agreeing in direction is a
+   one-sided sign test p = 0.125 - too few seeds to call significant, but not
+   nothing either. The defensible statement is "consistent in direction, and
+   small enough that 2.5x the data and 2.3x the training time buy under one
+   point of F0.5". Note the *unpaired* comparison would have hidden this
+   entirely: mixed's own seed spread (0.0065) is twice the effect.
+3. **Pre-training on synthetic then fine-tuning on real is reliably worse**
+   than just training on real (**-0.0126 +/- 0.0023**, -2.8%, all three seeds).
+   This is the one result that contradicts common practice directly, and the
+   most likely explanation is scale: at 60.5M parameters and 3 epochs there is
+   no capacity shortage for 32.3k real pairs, so stage 1 only installs a bias
+   the fine-tune has to undo.
+4. **Out of domain, mixing is worse on average and far less stable.** The
+   seed-13 result - mixed beating real-only on Indian English by +0.0131 - did
+   **not** replicate. It reversed at both other seeds (-0.0160, -0.0286) for a
+   mean of **-0.0105**. Worse, `e3_mixed` has an Indian English spread of
+   **0.0417** against real-only's **0.0009**: adding synthetic data made
+   out-of-domain behaviour **43x more variable**. Every condition scores far
+   lower on Indian English than on W&I (0.354 vs 0.461 at best), which is a
+   domain-shift result that holds for the real-only model too.
 
-**Why mixed gains recall but not F0.5.** Mixed has the highest recall of all
-four (0.3110 vs 0.2970) and the highest over-correction (0.1552 vs 0.1462). It
-edits more, catching more real errors and also making more spurious ones. Under
-F0.5 those cancel. A recall-weighted metric would have reported mixed as the
-clear winner - the third time in this project that the choice of metric decides
-the conclusion.
+**The methodological finding, which may be the most useful one here.** Had this
+project stopped at seed 13 - as the original trimmed budget planned (deviation
+D6) - it would have reported "synthetic data helps out-of-domain
+generalisation" with a +3.7% number attached. Three seeds show the opposite
+sign and a 43x variance penalty. The two claims the single seed got wrong were
+precisely the two small ones; the large effects (-0.1213, -0.0126) were right
+at seed 13 and stayed right. **Effect sizes below roughly 0.02 F0.5 are not
+measurable at this scale**, and that threshold is now measured rather than
+asserted.
+
+**Why mixed gains recall but not much F0.5.** Mixed has the highest recall of
+all four (0.3144 vs 0.2984) and the highest over-correction (0.1579 vs 0.1417).
+It edits more, catching more real errors and also making more spurious ones.
+Under F0.5 those nearly cancel. A recall-weighted metric would have reported
+mixed as a clear winner - the third time in this project that the choice of
+metric decides the conclusion.
 
 ## E4 results - distribution matching (measured, seed 13)
 
@@ -518,21 +552,23 @@ regardless of which error types are injected into it. Wang et al.'s claim does
 not reproduce at this scale, and the per-category table shows why that is not
 a matching failure: the match succeeded and the model still got worse.
 
-**The Indian English picture, stated as measured.** Matching *improved* Indian
-English in the synthetic-only arm (0.2078 -> 0.2194, +5.6%) while hurting W&I,
-which is the same direction as E3's mixed-vs-real result. But it **did not**
-reproduce in the mixed arm: 0.3678 -> 0.3556 (-3.3%), worse on both splits.
+**The Indian English picture, and why it must not be reported as a finding.**
+Matching *improved* Indian English in the synthetic-only arm (0.2078 ->
+0.2194, +5.6%) while hurting W&I, and **did not** reproduce in the mixed arm
+(0.3678 -> 0.3556, -3.3%, worse on both splits).
 
-So the out-of-domain story is **one for and one against**, not a pattern. The
-defensible claim from E3+E4 together is narrower than it first looked:
+Both E4 arms are **seed 13 only**, and E3's three seeds have since measured
+what that is worth out of domain: `e3_mixed` moves **0.0417** across seeds on
+the Indian English split, and E3's own seed-13 Indian result (mixed beating
+real by +0.0131) **reversed at both other seeds**. The +0.0116 that matching
+appears to gain for synthetic-only is a quarter of that spread.
 
-- E3's `mixed > real` on Indian English (+0.0131) stands on its own.
-- Within E4, distribution matching helps Indian English only when there is no
-  real data in the mixture at all.
-
-Both are single-seed and smaller than the E1 gap already dismissed as noise.
-The extra E3 seeds bound the first; the second has no replicate at all and the
-report must present it as an observation, not a finding.
+So the honest statement is that **E4 says nothing measurable about Indian
+English in either direction** - not "matching helps out of domain when there is
+no real data". Confirming that would need E4 at three seeds, which is ~1.5 h of
+GPU time and is listed as the first follow-on below. What E4 *does* support,
+because both arms agree and the effect is larger, is the in-domain penalty:
+-0.0219 and -0.0108, against an in-domain seed spread of 0.0025-0.0166.
 
 ## E5 results - Indian English (measured, seed 13)
 
@@ -602,6 +638,36 @@ batch 1 on the GPU (271.5 ms)** by 3x. Beam 4 costs 54% over greedy on GPU and
 119% on CPU. At batch 1 - the interactive case the demo actually runs - a
 60.5M-parameter T5 needs ~0.3 s per sentence on this GPU, which is acceptable
 for a web demo and is the number to quote for deployment, not the batched one.
+
+## Campaign complete
+
+`scripts/run_campaign.py` finished all eleven stages in **316 min (5.3 h)**,
+exit code 0, no failed stage.
+
+| stage | minutes |
+|---|---:|
+| e1 (5 arms) | 84.8 |
+| select1 | 0.0 |
+| e2 (3 new + 1 alias) | 17.6 |
+| select2 | 0.0 |
+| e3 seed 13 (4 conditions) | 68.2 |
+| distribution (E4 matching, CPU) | 3.8 |
+| e4 (2 arms) | 45.3 |
+| e5 | 0.6 |
+| latency | 7.5 |
+| aggregate | 0.0 |
+| e3_seeds (42, 2026 - 8 runs) | 173.1 |
+| aggregate2 | 0.0 |
+
+**24 of 24 expected runs complete. 6 of 6 figures. 0 warnings.**
+`aggregate --strict` exits 0, `scripts/audit_results.py` verifies **200
+numbers** against the per-seed `metrics.json` files, and `pytest` passes 403
+tests.
+
+Measured throughput held at 170-186 examples/s for every run except the one
+CPU-starved by my own concurrent test runs (see the incident below), so the
+8 h estimate for the full spec-faithful grid was accurate to within ~30 min
+once that 38-minute loss is subtracted.
 
 ## Audit: every RESULTS.md number re-checked independently
 
@@ -740,8 +806,13 @@ suites, no `aggregate`, and no CPU model loading while a run is in flight -
 - [ ] The generator covers 10 ERRANT categories; **22.6% of real W&I edits are in
       categories it cannot produce at all** (WO, MORPH, NOUN:POSS, CONTR, VERB:INFL).
       That ceiling bounds what synthetic-only training can achieve here.
-- [ ] Every E3/E4 conclusion rests on **seed 13 alone**. The two differences the report
-      most wants to interpret (mixed vs real, +0.0017 on test; mixed vs real on Indian
-      English, +0.0131) are both plausibly smaller than the seed-to-seed spread.
-      `--plan e3 --seeds 42 2026` is queued as the last campaign stage to bound exactly
-      this, and the report must not assert either direction until it lands.
+- [x] (closed) E3 now has **three seeds** (13, 42, 2026). Both differences flagged here
+      were indeed inside the spread, and one of them *reversed*: mixed vs real on Indian
+      English went +0.0131, -0.0160, -0.0286. The measured threshold is that effects
+      below ~0.02 F0.5 are not resolvable at this scale. See the E3 section.
+- [ ] **E1, E2, E4 and E5 remain single-seed** (seed 13), which is what spec section 7's
+      budget mode prescribes. E3's spread now gives the scale to read them against, and
+      two of their conclusions sit close to it: E1's p = 0.2 vs p = 0.4 (0.0007 apart,
+      already called noise) and E4's mixed arm (-0.0108). **E4 at three seeds (~1.5 h)
+      is the single highest-value follow-on**; E1/E2's headline trends are monotonic
+      across four points each and far larger than the spread, so they do not need it.

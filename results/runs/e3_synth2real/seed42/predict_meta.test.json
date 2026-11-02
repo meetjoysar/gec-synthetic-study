@@ -1,0 +1,17 @@
+{
+  "batch_size": 32,
+  "copy_rate": 0.495,
+  "device": "cuda",
+  "max_source_len": 192,
+  "ms_per_sentence": 17.55,
+  "n": 4384,
+  "n_empty_repaired": 0,
+  "n_retokenised": 4280,
+  "n_truncated": 2,
+  "num_beams": 4,
+  "peak_vram_mb": 1567.2,
+  "precision": "fp32",
+  "sentences_per_s": 56.98,
+  "split": "test",
+  "wall_clock_s": 76.95
+}
