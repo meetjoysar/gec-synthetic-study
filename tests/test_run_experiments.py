@@ -283,3 +283,74 @@ def test_e1_runs_do_not_keep_checkpoints():
     """Nothing downstream needs them, and they are ~240 MB each."""
     for job in rx.iter_jobs("e1", [13], resolve=False):
         assert job.cfg["keep_checkpoint"] is False, job.config
+
+
+# --------------------------------------------------------------------------- #
+# Campaign driver: the concurrency guard
+# --------------------------------------------------------------------------- #
+
+def test_campaign_detects_a_running_trainer(monkeypatch):
+    """The guard against two trainers sharing one 4 GB GPU.
+
+    A chained launcher once used `kill -0 <windows-pid>` from Git Bash, which
+    cannot see native Windows PIDs, so it started a second trainer alongside
+    the first: throughput fell from 181 to 7.2 examples/s and both wrote into
+    the same run directory.
+    """
+    import importlib.util
+    import subprocess
+
+    spec = importlib.util.spec_from_file_location(
+        "run_campaign", paths.ROOT / "scripts" / "run_campaign.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    fake = (
+        '[{"ProcessId":4242,"CommandLine":"python.exe -m gec.run_experiments '
+        '--plan e1 --yes"},'
+        '{"ProcessId":4243,"CommandLine":"python.exe -c print(1)"}]'
+    )
+
+    class R:
+        stdout = fake
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: R())
+    hits = mod.already_running()
+    assert [p for p, _ in hits] == [4242], "only project trainers count"
+
+
+def test_campaign_ignores_unrelated_python_processes(monkeypatch):
+    import importlib.util
+    import subprocess
+
+    spec = importlib.util.spec_from_file_location(
+        "run_campaign2", paths.ROOT / "scripts" / "run_campaign.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    class R:
+        stdout = '[{"ProcessId":999,"CommandLine":"python.exe -m pytest"}]'
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: R())
+    assert mod.already_running() == []
+
+
+def test_campaign_stage_order_is_dependency_correct():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "run_campaign3", paths.ROOT / "scripts" / "run_campaign.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    names = [n for n, _, _ in mod.STAGES]
+    # Selection must sit between the plans that produce and consume it.
+    assert names.index("e1") < names.index("select1") < names.index("e2")
+    assert names.index("e2") < names.index("select2") < names.index("e3")
+    # E4 needs its matched weights first.
+    assert names.index("distribution") < names.index("e4")
+    # A complete report must exist before the optional extra seeds.
+    assert names.index("aggregate") < names.index("e3_seeds")

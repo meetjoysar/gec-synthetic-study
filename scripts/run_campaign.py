@@ -72,6 +72,51 @@ STAGES: list[tuple[str, list[str], str]] = [
 ]
 
 
+def already_running() -> list[tuple[int, str]]:
+    """Other training/campaign processes belonging to this project.
+
+    Guard against the failure that cost this project six hours: a chained
+    launcher used ``kill -0 <windows-pid>`` from Git Bash to wait for an
+    in-flight run, but MSYS2 cannot see native Windows PIDs, so the check
+    passed immediately and a SECOND trainer started alongside the first. Two
+    processes then fought over a 4 GB GPU - throughput collapsed from 181 to
+    7.2 examples/s (25x slower) - and both wrote into the same run directory,
+    so the result had to be discarded.
+
+    Uses WMIC/PowerShell rather than psutil to avoid a new dependency.
+    """
+    import subprocess as sp
+
+    mine = os.getpid()
+    try:
+        out = sp.run(
+            ["powershell", "-NoProfile", "-Command",
+             "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
+             "Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress"],
+            capture_output=True, text=True, timeout=60,
+        ).stdout
+    except (OSError, sp.SubprocessError):
+        return []
+    import json as _json
+
+    try:
+        data = _json.loads(out or "[]")
+    except _json.JSONDecodeError:
+        return []
+    if isinstance(data, dict):
+        data = [data]
+
+    hits: list[tuple[int, str]] = []
+    for row in data:
+        pid = int(row.get("ProcessId") or 0)
+        cmd = str(row.get("CommandLine") or "")
+        if pid in (mine, 0):
+            continue
+        if "gec.run_experiments" in cmd or "run_campaign.py" in cmd or "gec.train" in cmd:
+            hits.append((pid, cmd[:110]))
+    return hits
+
+
 def env() -> dict[str, str]:
     e = os.environ.copy()
     e["PYTHONNOUSERSITE"] = "1"       # a broken pip/user site shadows the env
@@ -99,7 +144,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--skip", nargs="*", default=[], help="stage names to skip")
     ap.add_argument("--continue-on-error", action="store_true",
                     help="keep going past a failed stage (aggregate still runs)")
+    ap.add_argument("--allow-concurrent", action="store_true",
+                    help="start even if another trainer is running (NOT advised "
+                         "on a 4 GB GPU; see already_running())")
     args = ap.parse_args(argv)
+
+    busy = already_running()
+    if busy and not args.allow_concurrent:
+        print("[campaign] REFUSING TO START: another trainer is already running.")
+        for pid, cmd in busy:
+            print(f"    pid {pid}: {cmd}")
+        print(
+            "\nTwo trainers on a 4 GB GPU thrash VRAM (measured: 181 -> 7.2 "
+            "examples/s, 25x slower) and can write into the same run directory, "
+            "which makes the result unusable.\n"
+            "Wait for it to finish, stop it, or pass --allow-concurrent if you "
+            "are certain."
+        )
+        return 2
 
     stages = [s for s in STAGES if s[0] not in args.skip]
     if args.stop_after:
