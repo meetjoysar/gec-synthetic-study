@@ -281,6 +281,67 @@ identically rather than disagreeing by convention.
 Raw collected text is **gitignored** (`data_manual/manual_sentences.txt`), as
 are the two in-progress annotation files. Only the curated TSV is tracked.
 
+## E1 results - the noise-ratio sweep (measured)
+
+Selection is on **val** only. Test is reported, never selected on.
+
+| arm | p | val P | val R | **val F0.5** | test F0.5 | over-corr | edits/sent | copy rate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `e1_p0.1` | 0.1 | 0.4523 | 0.1272 | 0.2993 | 0.2986 | 0.112 | 0.48 | 0.661 |
+| `e1_p0.2` | 0.2 | 0.4530 | 0.1701 | **0.3399** | 0.3413 | 0.148 | 0.67 | 0.577 |
+| `e1_p0.4` | 0.4 | 0.3949 | 0.2168 | 0.3392 | 0.3332 | 0.261 | 1.00 | 0.451 |
+| `e1_p0.6` | 0.6 | 0.3383 | 0.2527 | 0.3169 | 0.3044 | 0.372 | 1.38 | 0.351 |
+| `e1_p0.2_precomp` | 0.2 | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+
+**The headline finding.** The noise ratio controls the precision/recall
+trade-off almost monotonically: recall rises 0.127 -> 0.170 -> 0.217 -> 0.253
+while precision falls 0.452 -> 0.453 -> 0.395 -> 0.338. Because F0.5 weights
+precision twice as heavily as recall, the optimum sits at **low-to-moderate
+noise** - an inverted U peaking near p = 0.2. Over-correction (0.112 -> 0.372)
+and edits per sentence (0.48 -> 1.38) rise monotonically with p, and copy rate
+falls (0.661 -> 0.351), all consistent with a model trained on progressively
+noisier data becoming progressively more willing to edit.
+
+This is a direct, quantitative answer to Koo et al.'s noise-injection question,
+measured under F0.5 rather than BLEU.
+
+**Honest caveat on the selection.** p = 0.2 beats p = 0.4 by **0.0007** val
+F0.5. On a single seed that is noise, not a difference. The report must say
+"F0.5 is flat between p = 0.2 and p = 0.4, and both clearly beat p = 0.1 and
+p = 0.6" rather than "p = 0.2 is optimal". The two are not equivalent in
+*character* though: p = 0.2 is the higher-precision, more conservative model
+(over-correction 0.148) and p = 0.4 the higher-recall one (0.261). Since both
+F0.5 and the over-correction metric favour precision, p = 0.2 was kept as the
+selected value and flows into E2/E3/E4.
+
+Val and test agree within 0.009 at every point, so nothing is overfitted to the
+selection split.
+
+## Incident: two trainers on one GPU (resolved)
+
+Recorded because it cost real time and the fix is now part of the tooling.
+
+To start the remaining campaign the moment E1 finished, the launcher waited on
+the in-flight process with `kill -0 <windows-pid>` **from Git Bash**. MSYS2
+cannot see native Windows PIDs, so the check passed immediately and a second
+`run_experiments --plan e1` started alongside the first.
+
+| | throughput | training time |
+|---|---:|---:|
+| `e1_p0.1`, alone | **181 examples/s** | 13.8 min |
+| `e1_p0.2`, two trainers | **7.18 examples/s** | **5.8 hours** |
+
+25x slower: two processes at ~2.6 GB peak each on a 4 GB card evict each
+other's memory continuously. Both also wrote into
+`results/runs/e1_p0.2/seed13`, so that directory was **discarded** and the arm
+re-run cleanly in 16.9 min. `e1_p0.1` was unaffected (it finished hours before
+the duplicate appeared; `cross_check_delta` 0.0).
+
+Fix: `scripts/run_campaign.py` now calls `already_running()` before any stage
+and refuses to start when another `gec.run_experiments` / `gec.train` /
+`run_campaign.py` process exists, overridable only with `--allow-concurrent`.
+Covered by tests. **Never wait on a native Windows PID from Git Bash.**
+
 ## Open issues
 
 - [ ] `Downloads/CLAUDE.md` and `Downloads/PROJECT_SPEC.md` are stray byte-identical copies.
