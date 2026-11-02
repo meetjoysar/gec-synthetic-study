@@ -395,3 +395,40 @@ def test_demo_examples_cannot_leak_an_imported_sentence():
     }
     for ex in cfg["examples"]:
         assert ex.strip() not in real_sources, f"demo leaks an E5 item: {ex}"
+
+
+def _manual_file(tmp_path, *sentences):
+    p = tmp_path / "manual_sentences.txt"
+    p.write_text("# post: meta\n" + "".join(s + "\n" for s in sentences),
+                 encoding="utf-8")
+    return p
+
+
+def test_import_writes_meta_beside_the_tsv_not_into_data_manual(tmp_path):
+    """The import stats must never land in the real ``data_manual/``.
+
+    ``import_manual`` wrote ``manual_import.meta.json`` to ``paths.DATA_MANUAL``
+    unconditionally, ignoring the ``tsv`` it was given. Every pytest run
+    therefore overwrote the committed file with temp-dir paths, which showed up
+    as a spurious git diff after each test run and would eventually have been
+    committed as if it described the real import.
+    """
+    manual = _manual_file(
+        tmp_path,
+        "The quality of the roads are very bad in our city .",
+        "I am having a doubt about this new scheme .",
+    )
+    real = paths.DATA_MANUAL / "manual_import.meta.json"
+    before = real.read_bytes() if real.exists() else None
+
+    ii.import_manual(manual, tmp_path / "indian.tsv")
+
+    assert (tmp_path / "manual_import.meta.json").exists()
+    after = real.read_bytes() if real.exists() else None
+    assert after == before, f"{real} was modified by a test"
+
+
+def test_dry_run_writes_no_meta_file(tmp_path):
+    manual = _manual_file(tmp_path, "The quality of the roads are very bad .")
+    ii.import_manual(manual, tmp_path / "indian.tsv", dry_run=True)
+    assert not (tmp_path / "manual_import.meta.json").exists()

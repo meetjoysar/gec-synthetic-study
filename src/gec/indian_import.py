@@ -232,7 +232,11 @@ def import_manual(
         print("\n[import] --dry-run: nothing written")
     else:
         print(f"\n[import] wrote {paths.rel(tsv)}")
-    paths.write_json(paths.DATA_MANUAL / "manual_import.meta.json", stats)
+        # Beside the TSV we actually wrote, not DATA_MANUAL: a hardcoded
+        # DATA_MANUAL made every pytest run overwrite the committed
+        # data_manual/manual_import.meta.json with temp-dir paths, which
+        # surfaced as a spurious git diff after every test run.
+        paths.write_json(tsv.parent / "manual_import.meta.json", stats)
     return stats
 
 

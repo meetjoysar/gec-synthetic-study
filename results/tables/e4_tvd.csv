@@ -1,0 +1,4 @@
+iter,tvd,n_edits,edits_per_sentence,chosen
+0,0.2502,21551,4.31,False
+1,0.128,21584,4.317,False
+2,0.1146,21817,4.363,True

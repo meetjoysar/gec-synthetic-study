@@ -17,13 +17,13 @@ code wrote, or says `TBD`.
 | 2 | Generator: `error_gen.py` | **DONE** — 15 ops / 10 categories, examples reviewed |
 | 3 | Evaluation + E0 | **DONE** — E0 test F0.5 = 0.0000, BLEU 80.03 |
 | 4 | Training: `build_datasets.py`, `train.py`, `predict.py`, `run_experiments.py` | **DONE** — smoke passes on CPU in 1.4 min |
-| 5 | Colab notebook | in progress |
-| 6 | E1–E3 runs (GPU) | blocked on the timing probe + time approval |
-| 7 | E4 distribution matching | `distribution.py` **DONE**; runs await GPU |
-| 8 | Indian English: template, kappa, E5 | template + `kappa.py` **DONE**; E5 awaits the group's sentences |
+| 5 | Colab notebook | **DONE** — `notebooks/colab_run.ipynb`, env-var paths, `requirements-colab.txt` (not needed in the end: the local GPU carried the campaign) |
+| 6 | E1–E3 runs (GPU) | **DONE** — E0 + 5 E1 arms + 4 E2 + 4 E3, all seed 13 |
+| 7 | E4 distribution matching | matching loop **DONE** (TVD 0.2502 → 0.1146); `e4_synthetic_matched` **DONE**, `e4_mixed_matched` running |
+| 8 | Indian English: template, kappa, E5 | **149 sentences imported + annotated by annotator 1**; all runs already score the `indian` split; E5 table awaits the `e5` stage. Cohen's kappa needs a second annotator |
 | 9 | Aggregation: figures, tables, `RESULTS.md` | **DONE** (skeleton verified all-TBD); figures fill in as runs land |
-| 10 | Gradio demo | TODO |
-| 11 | Docs: `README.md`, `CREDITS.md` | TODO |
+| 10 | Gradio demo | **DONE** — `app/app.py` + `explain.py`, serves with zero checkpoints and now has real E3 models |
+| 11 | Docs: `README.md`, `CREDITS.md` | **DONE** — final pass after the last `aggregate` |
 
 ---
 
@@ -377,15 +377,146 @@ Spec section 7.3 predicted over-correction would fall as `clean_ratio` rose,
 and it does, monotonically: the prediction **held**. But the spec's framing
 treats that as desirable, and measured under F0.5 it is not.
 
+## E3 results - the main comparison (measured, seed 13)
+
+This is the project's research question: **synthetic-only vs real-only vs
+mixed, same task, same metric.** All four conditions share the selected
+generator settings (p = 0.2, clean_ratio = 0.0) and differ only in training
+data. `e3_synthetic` is an alias of the E2 winner (no retraining);
+`e3_synth2real` warm-starts from it.
+
+| condition | train data | val F0.5 | **test F0.5** | test P | test R | BLEU(13a) | over-corr | indian F0.5 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| `e3_synthetic` | 50k synthetic | 0.3399 | **0.3413** | 0.4478 | 0.1749 | 80.80 | 0.1475 | 0.2078 |
+| `e3_real` | 32.3k W&I | 0.4739 | **0.4563** | 0.5270 | 0.2970 | 83.36 | 0.1462 | 0.3547 |
+| `e3_mixed` | 82.3k both | 0.4705 | **0.4580** | 0.5195 | 0.3110 | 83.41 | 0.1552 | 0.3678 |
+| `e3_synth2real` | synth -> 32.3k W&I | 0.4472 | **0.4440** | 0.5200 | 0.2803 | 82.90 | 0.1398 | 0.3204 |
+
+Differences against real-only, on test F0.5:
+
+| comparison | delta | relative |
+|---|---:|---:|
+| synthetic vs real | **-0.1150** | -25.2% |
+| mixed vs real | **+0.0017** | +0.4% |
+| synth->real vs real | **-0.0123** | -2.7% |
+
+**Answer to the research question, stated carefully.**
+
+1. **Synthetic data cannot replace real data.** Synthetic-only loses a quarter
+   of its F0.5 (-25.2%), and the loss is almost entirely **recall**: 0.175 vs
+   0.297. Precision holds up far better (0.448 vs 0.527). The synthetic-only
+   model edits half as often (0.66 vs 0.96 edits/sentence, copy rate 0.577 vs
+   0.495) and so simply misses most real learner errors.
+2. **Synthetic data does not supplement real data either.** Mixed beats
+   real-only by **+0.0017** F0.5 - on a single seed that is indistinguishable
+   from zero, and 2.5x smaller than the E1 gap we already called noise. The
+   honest claim is "mixed and real-only are indistinguishable at this scale",
+   **not** "mixing helps". Adding 50k synthetic pairs to 32.3k real ones
+   (2.5x the data, 2.3x the training time) buys nothing measurable in-domain.
+3. **Pre-training on synthetic then fine-tuning on real is actively worse**
+   than just training on real (-2.7%). This is the one result that contradicts
+   common practice directly, and the most likely explanation is scale: at
+   60.5M parameters and 2 epochs there is no capacity shortage for 32.3k real
+   pairs, so stage 1 only installs a bias the fine-tune has to undo.
+4. **The one exception is out of domain.** On the Indian English set, mixed
+   beats real-only by **+0.0131** (+3.7%) - 8x the in-domain gap, and in the
+   same direction. Every condition scores far lower on Indian English than on
+   W&I (0.37 vs 0.46 at best), which is itself a result worth reporting.
+
+**Why mixed gains recall but not F0.5.** Mixed has the highest recall of all
+four (0.3110 vs 0.2970) and the highest over-correction (0.1552 vs 0.1462). It
+edits more, catching more real errors and also making more spurious ones. Under
+F0.5 those cancel. A recall-weighted metric would have reported mixed as the
+clear winner - the third time in this project that the choice of metric decides
+the conclusion.
+
+## E4 results - distribution matching (measured, seed 13)
+
+Wang et al.'s claim is that synthetic data helps when its error-type
+distribution matches the real one. E4 tests it directly: measure the real
+distribution from `train_real.m2`, measure the generator's, reweight, repeat.
+
+### The matching loop worked
+
+| iter | TVD vs real | chosen |
+|---|---:|---|
+| 0 (default weights) | 0.2502 | |
+| 1 | 0.1280 | |
+| 2 | **0.1146** | **yes** |
+
+Per-category shares, renormalised over the 10 covered categories
+(`results/tables/e4_distribution.csv`):
+
+| category | real | synthetic before | synthetic after |
+|---|---:|---:|---:|
+| PUNCT | 0.227 | 0.272 | 0.234 |
+| OTHER | 0.170 | 0.051 | 0.106 |
+| DET | 0.150 | 0.145 | 0.210 |
+| PREP | 0.129 | 0.101 | 0.177 |
+| VERB:TENSE | 0.080 | 0.035 | 0.074 |
+| ORTH | 0.063 | 0.098 | 0.053 |
+| NOUN:NUM | 0.054 | 0.061 | 0.053 |
+| SPELL | 0.049 | 0.214 | 0.039 |
+| VERB:FORM | 0.047 | 0.012 | 0.032 |
+| VERB:SVA | 0.030 | 0.011 | 0.022 |
+
+The loop fixed the two largest discrepancies: SPELL was **4.3x
+over-represented** (0.214 vs 0.049) and is now right, and the verb categories
+roughly tripled toward their real shares. It over-shot DET and PREP in doing
+so. **TVD more than halved (-54%).**
+
+A ceiling the loop cannot touch: TVD is computed over the covered categories
+only, because **22.6% of real W&I edits are in categories the generator cannot
+produce at all** (WO, MORPH, NOUN:POSS, CONTR, VERB:INFL). Matching can change
+the mix inside its 10 categories; it cannot add the missing five.
+
+### Matching the distribution made the model worse
+
+| run | weights | test F0.5 | test P | test R | indian F0.5 |
+|---|---|---:|---:|---:|---:|
+| `e3_synthetic` | default | **0.3413** | 0.4478 | 0.1749 | 0.2078 |
+| `e4_synthetic_matched` | matched (TVD 0.1146) | **0.3194** | 0.4623 | 0.1429 | **0.2194** |
+| `e4_mixed_matched` | matched | TBD | TBD | TBD | TBD |
+
+**-0.0219 test F0.5 (-6.4%)**, and again the mechanism is recall: 0.175 ->
+0.143, while precision actually rose slightly (0.448 -> 0.462). Halving the
+distance to the real error distribution made the synthetic-only model
+**more conservative and less useful**.
+
+**This is the project's clearest negative result**, and it is the third
+independent one pointing the same way:
+
+- E1: flattening the distribution toward uniform noise also hurt (-0.027 at
+  p = 0.2, `e1_p0.2_precomp`).
+- E3: synthetic data neither replaced real data nor supplemented it.
+- E4: matching the real distribution did not rescue it.
+
+Taken together, **the generator's error-type mix is not the binding
+constraint.** Three separate interventions on that mix - flatten it, match it,
+tune the noise ratio - all moved F0.5 by less than they moved precision/recall
+balance, and none closed the gap to real data. What remains as the likely
+limit is the *text*: corrupted Wikipedia prose has the wrong sentence
+structure, vocabulary and error co-occurrence pattern for learner writing,
+regardless of which error types are injected into it. Wang et al.'s claim does
+not reproduce at this scale, and the per-category table shows why that is not
+a matching failure: the match succeeded and the model still got worse.
+
+**The Indian English exception, again.** Matching *improved* Indian English
+(0.2078 -> 0.2194, +5.6%) while hurting W&I - the same direction as E3's mixed
+result. Two independent hints that synthetic data aids out-of-domain
+generalisation while doing nothing in-domain. Both are single-seed and small;
+the extra E3 seeds will show whether this survives.
+
 ## Open issues
 
 - [ ] `Downloads/CLAUDE.md` and `Downloads/PROJECT_SPEC.md` are stray byte-identical copies.
       The one at the `Downloads` root applies this project's instructions to the **entire**
       Downloads tree. Worth deleting — **ask the user first** (spec §2.4).
-- [ ] **Annotation of the 149 imported sentences has not started.** Both annotators edit
-      their own gitignored file (`data_manual/annotation/annotator{1,2}.tsv`), then
-      `--merge-annotations` copies the result in. E5 stays `TBD` until >= 20 rows have
-      BOTH columns filled.
+- [x] (partly closed) **Annotator 1 has annotated all 149 sentences**; merged in via
+      `--merge-annotations`. E5 scores against this single reference, which is enough to
+      run. **Still open: a second independent annotator**, needed only for Cohen's kappa
+      (spec section 5.5). No rework when it arrives - `kappa.py` detects the second column
+      and the number appears on the next `aggregate`.
 - [ ] (superseded) The group must write ~150 Indian English sentences with two independent annotators.
       Template ships in Phase 8a; E5 stays `TBD` until >= 20 **fully annotated** rows
       exist. Sources may be committed before annotation: such rows report as
@@ -395,8 +526,9 @@ treats that as desirable, and measured under F0.5 it is not.
       whose data host (`exports.socialgrep.com`) no longer resolves in DNS, and
       `datasets 4.0.0` cannot execute remote loading scripts in any case. The set
       stays group-written, exactly as spec section 5.5 intends.
-- [ ] GPU campaign not yet approved with measured numbers. The `--timing-probe` run comes
-      first, then the hours get restated before anything long starts.
+- [x] (closed) GPU campaign approved after the `--timing-probe` numbers were restated.
+      Measured 161.5 examples/s at 16x2, so the budget trims were withdrawn and the
+      campaign ran spec-faithful (50k pairs, 3 epochs).
 - [ ] Verb errors are structurally hard for the generator to produce (15.8% real vs 4.2%
       synthetic, and only ~4.5% even after pre-compensation). Worth one paragraph in the
       report: part of any synthetic-only shortfall is a generator-coverage limit, not
@@ -404,3 +536,8 @@ treats that as desirable, and measured under F0.5 it is not.
 - [ ] The generator covers 10 ERRANT categories; **22.6% of real W&I edits are in
       categories it cannot produce at all** (WO, MORPH, NOUN:POSS, CONTR, VERB:INFL).
       That ceiling bounds what synthetic-only training can achieve here.
+- [ ] Every E3/E4 conclusion rests on **seed 13 alone**. The two differences the report
+      most wants to interpret (mixed vs real, +0.0017 on test; mixed vs real on Indian
+      English, +0.0131) are both plausibly smaller than the seed-to-seed spread.
+      `--plan e3 --seeds 42 2026` is queued as the last campaign stage to bound exactly
+      this, and the report must not assert either direction until it lands.

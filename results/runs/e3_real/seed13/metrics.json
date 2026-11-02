@@ -3,7 +3,7 @@
     "complete": true,
     "errant_version": "3.0.2",
     "schema": 1,
-    "written_at": "2026-11-02T09:18:41Z"
+    "written_at": "2026-11-02T10:45:35Z"
   },
   "condition": "real",
   "run": "e3_real",
@@ -29,7 +29,7 @@
         "tp": 62
       },
       "errant_raw_log": "results/runs/e3_real/seed13/logs/errant_compare.indian.txt",
-      "eval_seconds": 9.4,
+      "eval_seconds": 5.3,
       "n": 149,
       "n_bleu_excluded": 0,
       "n_clean": 65,
