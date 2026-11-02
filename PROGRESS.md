@@ -654,6 +654,35 @@ opening the demo during a run would put three more 250 MB models on the 4 GB
 card - the contention that measured 25x slower once already. The first
 numbers above were produced with `--device cpu` while seed 42 was training.
 
+## Reproducibility note on the extra E3 seeds
+
+`run_experiments` printed, correctly, at the start of the seed 42 / 2026 stage:
+
+```
+[run] WARNING: the working tree has 50 uncommitted change(s);
+      these runs will not be exactly reproducible.
+```
+
+Checked rather than waved away. `results/runs/e3_synthetic/seed42/env.json`
+records commit `8847032` with `dirty: true` and names all 50 files: **49 are
+results artefacts the campaign had just written** (per-run `metrics.json`,
+ERRANT logs, per-category CSVs, the E4 tables) plus `PROGRESS.md` and the
+generated `configs/experiments/e4_matched_weights.yaml`. **No file under
+`src/`, `configs/base.yaml` or `configs/experiments/e3_*.yaml` was modified**,
+so the training, prediction and scoring code at those runs was exactly the
+committed code.
+
+Verified independently rather than by inspection of the file list: the seed 42
+run's own `config.yaml` is **byte-identical** to seed 13's once the seed and
+run name are removed, including the `${select.*}`-resolved `p = 0.2` and
+`clean_ratio = 0.0`. The extra seeds are a clean replicate of the same
+condition, which is the only property the error bars depend on.
+
+Also logged by the tool and expected: `e3_synthetic` cannot alias
+`e2_clean0.0/seed13` at seeds 42 and 2026 (the target is a seed-13 run), so it
+trains instead. That is the alias guard working - reusing a seed-13 checkpoint
+under a seed-42 label would have silently produced three identical "seeds".
+
 ## Open issues
 
 - [ ] `Downloads/CLAUDE.md` and `Downloads/PROJECT_SPEC.md` are stray byte-identical copies.
