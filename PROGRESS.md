@@ -683,6 +683,34 @@ Also logged by the tool and expected: `e3_synthetic` cannot alias
 trains instead. That is the alias guard working - reusing a seed-13 checkpoint
 under a seed-42 label would have silently produced three identical "seeds".
 
+## Incident: CPU starvation of a GPU run (resolved, no data affected)
+
+`e3_synthetic/seed2026` trained at **66.1 examples/s** against the ~175 ex/s
+every comparable run achieved - 57 minutes of wall clock for a 19-minute job.
+
+| run | examples/s | train time |
+|---|---:|---:|
+| `e3_synthetic` seed 42 | 174.5 | 14.3 min |
+| `e3_synthetic` seed 2026 | **66.1** | **37.8 min** |
+| `e3_real` seed 42 (next run) | 185.7 | 8.7 min |
+
+Cause: `dataloader_num_workers: 0` (set for Windows), so the trainer tokenises
+and collates every batch in its own main process. During that window the
+machine was also running the full pytest suite repeatedly, re-running
+`aggregate`, and - worst of it - loading three `t5-small` models on **CPU** for
+a demo smoke test with beam 4. The GPU was idle waiting for batches.
+
+Throughput recovered to 185 ex/s on the very next run with no config change,
+which is what identifies the cause. **No numbers are affected**: seed 2026
+scored test F0.5 0.3425, in line with seeds 13 (0.3413) and 42 (0.3259). The
+cost was ~38 minutes of GPU time.
+
+Same lesson as the two-trainers incident above, one level down the stack: on a
+single-worker dataloader, *CPU* contention throttles a *GPU* run, and the
+symptom (slow training) points nowhere near the cause. Rule adopted: no test
+suites, no `aggregate`, and no CPU model loading while a run is in flight -
+`app/app.py --device cpu` is for when the GPU is busy and the CPU is **not**.
+
 ## Open issues
 
 - [ ] `Downloads/CLAUDE.md` and `Downloads/PROJECT_SPEC.md` are stray byte-identical copies.
