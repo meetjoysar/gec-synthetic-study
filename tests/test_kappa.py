@@ -154,19 +154,32 @@ def test_shipped_tsv_is_valid():
     assert problems == [], problems
 
 
-def test_report_skips_gracefully_until_annotation_is_done(tmp_path):
-    """Until >= 20 rows are FULLY annotated, E5 must skip rather than crash."""
+def test_report_tracks_gold_availability(tmp_path):
+    """E5 needs >= 20 rows with a GOLD reference (annotator1 filled).
+
+    Kappa additionally needs annotator2; the report says which of the two
+    situations it is in rather than conflating them.
+    """
     out = tmp_path / "kappa.json"
     tsv = paths.DATA_MANUAL / "indian_english_test.tsv"
-    n_ready, n_pending = kappa.pending_count(tsv)
+    n_gold, n_no_gold = kappa.pending_count(tsv, require_both=False)
     payload = kappa.report(tsv, out)
-    assert payload["n_real_rows"] == n_ready
-    assert payload["n_pending_annotation"] == n_pending
-    if n_ready < kappa.MIN_REAL_ROWS:
+
+    assert payload["n_real_rows"] == n_gold
+    assert payload["n_pending_annotation"] == n_no_gold
+
+    if n_gold < kappa.MIN_REAL_ROWS:
         assert payload["skipped"] is True
-        assert paths.read_json(out)["skipped"] is True
     else:
         assert payload["skipped"] is False
+        cols = kappa.annotator_columns(kappa.load_indian_tsv(tsv)[0])
+        if len(cols) < 2:
+            # Single reference: scoring is valid, kappa is undefined.
+            assert payload["single_annotator"] is True
+            assert payload["token_kappa"] is None
+            assert "INDEPENDENT" in payload["note"]
+        else:
+            assert payload.get("token_kappa") is not None or                 payload.get("token_note")
 
 
 def test_report_counts_pending_rows_in_its_payload(tmp_path):

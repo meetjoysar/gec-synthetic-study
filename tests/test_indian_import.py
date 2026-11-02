@@ -368,13 +368,17 @@ def test_real_tsv_sensitive_rows_are_marked():
     imported = all_rows[all_rows["id"].str.startswith("IN-")]
     if len(imported) == 0:
         pytest.skip("sentences not imported in this checkout")
-    sens = imported[imported["notes"] == ii.SENSITIVE_NOTE]
+    # notes may also carry an appended annotator comment, so match on prefix.
+    sens = imported[imported["notes"].str.startswith(ii.SENSITIVE_NOTE)]
     assert len(sens) == 28
     # Every sensitive row's label must actually carry the marker.
     assert all("[sensitive]" in n for n in sens["source_note"])
     # ...and no non-sensitive row is marked.
-    others = imported[imported["notes"] != ii.SENSITIVE_NOTE]
+    others = imported[~imported["notes"].str.startswith(ii.SENSITIVE_NOTE)]
     assert not any("[sensitive]" in n for n in others["source_note"])
+    # The sensitive warning must never be lost when a comment is appended.
+    for n in sens["notes"]:
+        assert n.startswith(ii.SENSITIVE_NOTE)
 
 
 def test_demo_examples_cannot_leak_an_imported_sentence():

@@ -61,6 +61,25 @@ def annotator():
     return errant.load("en")
 
 
+def annotator_columns(df) -> list[str]:
+    """Which annotator columns actually carry judgements, in order.
+
+    Used so the pipeline adapts to one or two annotators instead of refusing to
+    run with one. ERRANT's ``parallel_to_m2`` accepts any number of ``-cor``
+    files, so a single-annotator reference is a legitimate, if weaker, gold
+    standard: P/R/F0.5 are still meaningful, only Cohen's kappa is not
+    computable - it needs a second INDEPENDENT judgement to agree with.
+    """
+    real = df[~df["id"].astype(str).str.startswith(EXAMPLE_PREFIX)]
+    return [c for c in ("annotator1", "annotator2")
+            if c in real.columns and (real[c].astype(str).str.strip() != "").any()]
+
+
+def is_scoreable(df):
+    """Boolean mask: rows usable as a gold reference (annotator1 filled)."""
+    return df["annotator1"].astype(str).str.strip() != ""
+
+
 def is_annotated(df):
     """Boolean mask: rows where BOTH annotators have filled their column.
 
@@ -79,8 +98,14 @@ def is_annotated(df):
     )
 
 
-def load_indian_tsv(path: Path | str):
+def load_indian_tsv(path: Path | str, require_both: bool = True):
     """Read the TSV, returning ``(all_rows, ready_rows)`` as DataFrames.
+
+    ``require_both=True`` (the default, and what the kappa path needs) counts a
+    row ready only when both annotators have filled it. ``require_both=False``
+    counts a row ready when ``annotator1`` alone is filled, which is what E5
+    scoring needs: a single-reference gold standard still gives valid
+    P/R/F0.5.
 
     ``ready_rows`` excludes both the ``EXAMPLE-`` demonstration rows and any
     row still awaiting annotation, so every consumer sees only rows that are
@@ -100,13 +125,14 @@ def load_indian_tsv(path: Path | str):
         if col not in df.columns:
             df[col] = ""
     real = df[~df["id"].astype(str).str.startswith(EXAMPLE_PREFIX)].reset_index(drop=True)
-    ready = real[is_annotated(real)].reset_index(drop=True)
+    mask = is_annotated(real) if require_both else is_scoreable(real)
+    ready = real[mask].reset_index(drop=True)
     return df, ready
 
 
-def pending_count(path: Path | str) -> tuple[int, int]:
+def pending_count(path: Path | str, require_both: bool = True) -> tuple[int, int]:
     """``(n_ready, n_pending)`` among the real (non-EXAMPLE) rows."""
-    all_rows, ready = load_indian_tsv(path)
+    all_rows, ready = load_indian_tsv(path, require_both=require_both)
     real = all_rows[~all_rows["id"].astype(str).str.startswith(EXAMPLE_PREFIX)]
     return len(ready), len(real) - len(ready)
 
@@ -146,12 +172,22 @@ def validate(df) -> list[str]:
     # fill their own column independently. Report them as pending so the group
     # can see progress without the validator crying wolf.
     real = df[~df["id"].astype(str).str.startswith(EXAMPLE_PREFIX)]
-    pending = real[~is_annotated(real)]
-    if len(pending):
+    no_gold = real[~is_scoreable(real)]
+    if len(no_gold):
         problems.append(
-            f"PENDING (not an error): {len(pending)} real row(s) await annotation "
-            f"(ids: {pending['id'].tolist()[:8]}). They do not count toward the "
-            f"{MIN_REAL_ROWS}-row threshold until BOTH annotator columns are filled."
+            f"PENDING (not an error): {len(no_gold)} real row(s) have no "
+            f"annotation yet (ids: {no_gold['id'].tolist()[:8]}). They do not "
+            f"count toward the {MIN_REAL_ROWS}-row threshold until annotator1 "
+            "is filled."
+        )
+    # Gold present but no second judgement: scoring works, kappa does not.
+    one_only = real[is_scoreable(real) & ~is_annotated(real)]
+    if len(one_only):
+        problems.append(
+            f"PENDING (not an error): {len(one_only)} row(s) have annotator1 but "
+            "not annotator2. E5 scores fine against one reference; Cohen's kappa "
+            "needs a second INDEPENDENT annotation and is reported as "
+            "unavailable until then."
         )
 
     # An EXAMPLE- row ships complete, so a gap there IS a problem.
@@ -242,13 +278,16 @@ def report(tsv: Path | str, out: Path | str | None = None, strict: bool = False)
     tsv = Path(tsv)
     out = Path(out) if out else paths.TABLES / "indian_kappa.json"
 
-    all_rows, real = load_indian_tsv(tsv)
+    # Gold availability needs annotator1 only; kappa needs both.
+    all_rows, real = load_indian_tsv(tsv, require_both=False)
+    _, both = load_indian_tsv(tsv, require_both=True)
+    cols = annotator_columns(all_rows)
     problems = validate(all_rows)
     for p in problems:
         print(f"[kappa] {p}")
 
-    n_real = len(real)            # `real` is now READY rows (both annotations)
-    n_ready, n_pending = pending_count(tsv)
+    n_real = len(real)            # rows usable as a gold reference
+    n_ready, n_pending = pending_count(tsv, require_both=False)
     n_example = len(all_rows) - (n_ready + n_pending)
     print(f"[kappa] {paths.rel(tsv)}: {n_ready} ready, {n_pending} pending "
           f"annotation, {n_example} EXAMPLE- row(s)")
@@ -272,9 +311,40 @@ def report(tsv: Path | str, out: Path | str | None = None, strict: bool = False)
         print(f"[kappa] wrote {paths.rel(out)}")
         return payload
 
-    srcs = [tok.tokenise(tok.normalise(s)) for s in real["source"]]
-    a1 = [tok.tokenise(tok.normalise(s)) for s in real["annotator1"]]
-    a2 = [tok.tokenise(tok.normalise(s)) for s in real["annotator2"]]
+    # With a single annotator there is no second judgement to agree with, so
+    # kappa is not merely degenerate - it is undefined. Report that plainly and
+    # return the counts, rather than inventing an agreement number.
+    if len(cols) < 2 or len(both) == 0:
+        payload = {
+            "skipped": False,
+            "single_annotator": True,
+            "n_sentences": n_ready,
+            "n_real_rows": n_ready,
+            "n_pending_annotation": n_pending,
+            "annotator_columns_present": cols,
+            "token_kappa": None,
+            "sentence_kappa": None,
+            "note": (
+                "Only one annotator has filled in corrections, so Cohen's kappa "
+                "is undefined: it measures agreement between two INDEPENDENT "
+                "judgements and there is no second one. E5 still reports valid "
+                "P/R/F0.5 against this single-reference gold standard. Add a "
+                "second annotator's column and re-run to obtain kappa."
+            ),
+            "n_changed_by_annotator1": int(
+                (real["annotator1"].str.strip() != real["source"].str.strip()).sum()
+            ),
+            "validation_problems": problems,
+        }
+        paths.write_json(out, payload)
+        print(f"[kappa] single annotator ({', '.join(cols) or 'none'}): kappa is "
+              "undefined, E5 will score against one reference")
+        print(f"[kappa] wrote {paths.rel(out)}")
+        return payload
+
+    srcs = [tok.tokenise(tok.normalise(s)) for s in both["source"]]
+    a1 = [tok.tokenise(tok.normalise(s)) for s in both["annotator1"]]
+    a2 = [tok.tokenise(tok.normalise(s)) for s in both["annotator2"]]
 
     tok_a: list[int] = []
     tok_b: list[int] = []

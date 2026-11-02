@@ -124,6 +124,16 @@ def env() -> dict[str, str]:
     e["PYTHONPATH"] = str(ROOT / "src")
     e["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     e["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+    # Work entirely from the local cache. t5-small is already there (233 MB),
+    # but transformers still pings the Hub for optional metadata on every
+    # from_pretrained - e.g. /api/models/t5-small/tree/main/
+    # additional_chat_templates - and a single ConnectTimeout on that
+    # non-essential request killed the E2 stage after three of its four runs
+    # had completed. Nothing in this campaign needs the network, so take it out
+    # of the loop. If a model were genuinely missing this fails fast with a
+    # clear message instead of hanging.
+    e["HF_HUB_OFFLINE"] = "1"
+    e["TRANSFORMERS_OFFLINE"] = "1"
     return e
 
 

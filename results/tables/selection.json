@@ -20,7 +20,24 @@
     }
   },
   "e1_val_f05": 0.3399,
+  "e2_best_clean_ratio": 0.0,
+  "e2_best_run": "e2_clean0.0/seed13",
+  "e2_candidates": {
+    "e2_clean0.0/seed13": {
+      "val_f05": 0.3399,
+      "value": 0.0
+    },
+    "e2_clean0.2/seed13": {
+      "val_f05": 0.3134,
+      "value": 0.2
+    },
+    "e2_clean0.33/seed13": {
+      "val_f05": 0.2722,
+      "value": 0.33
+    }
+  },
+  "e2_val_f05": 0.3399,
   "metric": "errant.f05",
   "selected_on": "val",
-  "written_at": "2026-11-02T05:08:28Z"
+  "written_at": "2026-11-02T08:30:27Z"
 }

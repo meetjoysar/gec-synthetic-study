@@ -674,8 +674,10 @@ def prepare_indian(tsv: Path | None = None) -> dict:
     # `real` here is READY rows only: both annotator columns filled. Rows still
     # awaiting annotation are excluded, because an empty annotation line would
     # make errant_parallel drop the block and desynchronise the M2 files.
-    all_rows, real = kappa.load_indian_tsv(tsv)
-    n_ready, n_pending = kappa.pending_count(tsv)
+    # annotator1 alone is enough for a gold reference; kappa needs both.
+    all_rows, real = kappa.load_indian_tsv(tsv, require_both=False)
+    n_ready, n_pending = kappa.pending_count(tsv, require_both=False)
+    ann_cols = kappa.annotator_columns(all_rows)
     problems = kappa.validate(all_rows)
     for p in problems:
         print(f"[indian] VALIDATION: {p}")
@@ -701,23 +703,33 @@ def prepare_indian(tsv: Path | None = None) -> dict:
 
     srcs = [tok.tokenise(tok.normalise(s)) for s in real["source"]]
     ann1 = [tok.tokenise(tok.normalise(s)) for s in real["annotator1"]]
-    ann2 = [tok.tokenise(tok.normalise(s)) for s in real["annotator2"]]
 
     files = paths.split_files("indian")
     src_f = paths.PROCESSED / "indian.src.txt"
     a1_f = paths.PROCESSED / "indian.ann1.txt"
-    a2_f = paths.PROCESSED / "indian.ann2.txt"
     paths.write_lines(src_f, srcs)
     paths.write_lines(a1_f, ann1)
-    paths.write_lines(a2_f, ann2)
 
-    # One errant_parallel call with two -cor files writes annotator ids 0 and 1
-    # into a single M2 - only the CLI does that, which is why we shell out.
-    errant_cli.parallel_to_m2(src_f, [a1_f, a2_f], files["m2"])
+    cor_files = [a1_f]
+    ann2: list[str] = []
+    if "annotator2" in ann_cols:
+        ann2 = [tok.tokenise(tok.normalise(s)) for s in real["annotator2"]]
+        a2_f = paths.PROCESSED / "indian.ann2.txt"
+        paths.write_lines(a2_f, ann2)
+        cor_files.append(a2_f)
+    else:
+        print("[indian] single annotator: the reference M2 will have one "
+              "annotator id. P/R/F0.5 stay valid; kappa is not computable.")
+
+    # One errant_parallel call writes annotator ids 0..n-1 into a single M2 -
+    # only the CLI does that, which is why we shell out.
+    errant_cli.parallel_to_m2(src_f, cor_files, files["m2"])
 
     rows = []
-    for i, (s, c1, c2) in enumerate(zip(srcs, ann1, ann2)):
-        refs = list(dict.fromkeys([c1, c2]))
+    for i, (s, c1, c2) in enumerate(
+        zip(srcs, ann1, ann2 if ann2 else [""] * len(srcs))
+    ):
+        refs = list(dict.fromkeys([x for x in (c1, c2) if x]))
         rows.append(
             {
                 "id": str(real.iloc[i]["id"]),
@@ -725,9 +737,10 @@ def prepare_indian(tsv: Path | None = None) -> dict:
                 "tgt": c1,
                 "refs": refs,
                 # For the Indian set, "clean" means BOTH annotators left it alone.
-                "is_clean": (c1 == s and c2 == s),
+                # "clean" = every available annotator left it unchanged.
+                "is_clean": (c1 == s and (not c2 or c2 == s)),
                 "n_gold_edits": None,
-                "n_annotators": 2,
+                "n_annotators": len(ann_cols),
                 "src_len": len(s.split()),
                 "category": str(real.iloc[i].get("category", "")),
                 # Provenance, so RESULTS.md can break E5 down by source_type.
