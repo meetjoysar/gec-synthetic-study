@@ -323,9 +323,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--share", action="store_true")
     ap.add_argument("--no-preload", action="store_true",
                     help="load each model on first use instead of at startup")
+    ap.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None,
+                    help="override config.yaml. Use --device cpu to open the "
+                         "demo while a training run owns the GPU: three T5-small "
+                         "models at ~250 MB each would otherwise compete with "
+                         "the trainer for a 4 GB card")
     args = ap.parse_args(argv)
 
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8")) or {}
+    if args.device:
+        cfg["device"] = args.device
     correctors = load_correctors(cfg)
 
     ready = [n for n, c in correctors.items() if c.available]

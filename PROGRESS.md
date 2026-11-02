@@ -624,6 +624,36 @@ over-correction in turn), deletes a `metrics.json`, and breaks a link, and
 requires a non-zero exit each time. `TBD` cells are accepted: an unfinished run
 rendering as `TBD` is honest, not a mismatch.
 
+## Demo verified against the real checkpoints
+
+Phase 10 was accepted earlier with **zero** checkpoints (the graceful-fallback
+requirement). Re-checked now that `e3_synthetic`, `e3_real` and `e3_mixed` have
+weights, all three columns load and answer:
+
+```
+SRC: He go to school yesterday and buy a apple.
+  Synthetic-only   He went to school yesterday and bought an apple.   [3 edits, 1602 ms]
+  Real-only        He went to school yesterday and bought an apple.   [3 edits,  808 ms]
+  Mixed            He went to school yesterday and bought an apple.   [3 edits,  788 ms]
+
+SRC: What is your good name?
+  Synthetic-only   What is your good name?   [0 edits, 231 ms]
+  Real-only        What is your good name?   [0 edits, 238 ms]
+  Mixed            What is your good name?   [0 edits, 233 ms]
+```
+
+Two things worth showing in the viva. All three models fix the spec section
+1.3 example completely (SVA, tense, determiner), **including synthetic-only** -
+its 25% F0.5 deficit is not visible on an easy sentence, which is why the
+project measures F0.5 over 4,384 sentences rather than demoing. And all three
+leave "What is your good name?" untouched, an Indian English usage a
+prescriptive corrector might well have rewritten.
+
+Added `app/app.py --device {auto,cpu,cuda}`. The config says `device: auto`, so
+opening the demo during a run would put three more 250 MB models on the 4 GB
+card - the contention that measured 25x slower once already. The first
+numbers above were produced with `--device cpu` while seed 42 was training.
+
 ## Open issues
 
 - [ ] `Downloads/CLAUDE.md` and `Downloads/PROJECT_SPEC.md` are stray byte-identical copies.

@@ -154,3 +154,35 @@ def test_examples_do_not_leak_the_real_test_set():
     }
     for ex in cfg["examples"]:
         assert ex.strip() not in real_sources, f"demo example leaks a real test item: {ex}"
+
+
+def test_device_flag_overrides_the_config(monkeypatch, tmp_path):
+    """``--device cpu`` must win over ``device: auto`` in config.yaml.
+
+    Opening the demo while a training run owns the GPU would put three more
+    T5-small models on a 4 GB card. Two processes competing for this GPU
+    measured 25x slower once already, so the demo needs a way to stay off it.
+    """
+    import yaml
+
+    cfg_path = tmp_path / "config.yaml"
+    cfg_path.write_text(yaml.safe_dump({
+        "models": {"Real-only": "does/not/exist"},
+        "device": "auto", "num_beams": 4, "examples": [],
+    }), encoding="utf-8")
+
+    seen = {}
+    def _record(cfg):
+        seen["cfg"] = cfg
+        return {}
+
+    monkeypatch.setattr(demo, "load_correctors", _record)
+    monkeypatch.setattr(demo, "build_ui", lambda c, cfg: type(
+        "Fake", (), {"launch": lambda self, **kw: None})())
+
+    demo.main(["--config", str(cfg_path), "--device", "cpu"])
+    assert seen["cfg"]["device"] == "cpu"
+
+    seen.clear()
+    demo.main(["--config", str(cfg_path)])
+    assert seen["cfg"]["device"] == "auto", "no flag must leave the config alone"
