@@ -1,8 +1,10 @@
 {
   "n_example_rows": 5,
-  "n_pending_annotation": 0,
+  "n_pending_annotation": 149,
   "n_real_rows": 0,
-  "reason": "only 0 fully annotated rows (0 more await annotation); at least 20 are needed for a meaningful kappa. The group writes these sentences (spec rule 2.3); see data_manual/README.md. E5 renders as TBD until then.",
+  "reason": "only 0 fully annotated rows (149 more await annotation); at least 20 are needed for a meaningful kappa. The group writes these sentences (spec rule 2.3); see data_manual/README.md. E5 renders as TBD until then.",
   "skipped": true,
-  "validation_problems": []
+  "validation_problems": [
+    "PENDING (not an error): 149 real row(s) await annotation (ids: ['IN-0001', 'IN-0002', 'IN-0003', 'IN-0004', 'IN-0005', 'IN-0006', 'IN-0007', 'IN-0008']). They do not count toward the 20-row threshold until BOTH annotator columns are filled."
+  ]
 }

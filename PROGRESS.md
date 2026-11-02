@@ -139,6 +139,8 @@ Recorded as they happen, per spec section 13.
 | D10 | E1 sweeps `p` only, with one fixed set of generator weights (§6.2, §7) | **Extra E1 arm `e1_p0.2_precomp`**: same `p`, seed and base-set sentences as `e1_p0.2`, but with generator weights pre-compensated for applicability gating | **User-requested.** §6.2's weights are uniform across ERRANT types *as requested*, but each op's `applies` check gates whether it can fire, so the **realised** mix is badly skewed (measured below). The extra arm separates two questions the default weights conflate: "is there a best noise level?" and "does the generator's skewed realised distribution hold synthetic-only back?". Costs ~30 min of GPU time. |
 | D11 | — | Predictions are re-tokenised with spaCy before scoring (`predict.retokenise`) | T5's pretraining pulls its output toward ordinary detokenised English, so it emits `information.` where the source had `information .` — **48 of 50** smoke predictions needed it. ERRANT cannot distinguish that surface convention from a real `PUNCT` edit, so left alone it manufactures a spurious edit on nearly every sentence. Spec §5.3 already requires predictions to be in tokenised form. |
 | D12 | §5.4 keeps sentences with "no unusual characters (mostly ASCII…)" | Clean-pool charset filter rejects a sentence if ASCII folding **destroys** information (introduces a `?`), rather than applying a 95% character ratio | A ratio test is the wrong instrument: a long English sentence with one embedded Greek or CJK word clears 95% easily and still leaves a `??????????` token in the training data. Accented Latin folds cleanly (`café`→`cafe`) and is kept. Junk with ≥2 `?` fell from 326 to **1** of 60,000. |
+| D14 | §5.5: each `source` is "written by a group member" | 149 sources were **manually collected from public Indian subreddits** by the group and human-selected, not composed from scratch | **User-requested.** Authentic text carries errors people actually make, rather than the errors a writer *believes* are common - and it makes Cohen's kappa meaningful, since with invented sentences both annotators already know the intended error and agreement inflates toward 1. Two consequences the report must state: (a) §5.5 assumes every source *contains* an Indian English error, which a collected set cannot guarantee - some read as fluent and become control sentences; (b) 5 of 20 writers supply 40% of the set, so per-category results partly reflect a few idiolects. |
+| D15 | — | Annotation rules fix two conventions the spec leaves open: **never add missing sentence-final punctuation** (15 sentences lack it) and **never supply missing context** (21 start with a connective) | A conventional disagreement lowers kappa without telling us anything. Both decisions are recorded in `data_manual/README.md` so the two annotators apply them identically. |
 | D13 | §8.4 delete checkpoints except the demo/E5 models | Checkpoint pruning happens in `run_experiments` **after** prediction and evaluation, never inside `train()` | Deleting the weights at the end of training leaves `predict.py` with nothing to load. Caught by the smoke test. Retention is then a disk question, not a correctness one, and spec §7's "evaluate every E3/E4 model on the Indian set" stays possible. |
 
 ---
@@ -257,12 +259,38 @@ worst at those it cannot produce. That is direct, per-category evidence for
 Wang et al.'s distribution-matching claim, and it makes E4 the most interesting
 experiment in the set rather than a formality.
 
+## E5 Indian English set (imported)
+
+| | |
+|---|---|
+| Sentences | **149**, ids `IN-0001`..`IN-0149` |
+| Writers | **20** (`W01`..`W20`), labelled by post |
+| Duplicates found | **0** |
+| Token length | min 6, median **18**, mean 20.8, max 55 |
+| Within the 8-30 guidance | 117 (79%); 22 at 31-40; 6 over 40; 4 under 8 |
+| Marked `[sensitive]` | **28** (W02, W08, W10) - not to be quoted in the report |
+| Fully annotated | **0** so far; all 149 pending |
+| Provenance | public Indian subreddits, copied by hand; no usernames or links stored |
+
+Structural notes recorded at import, for the report's limitations paragraph:
+15 sentences have no sentence-final punctuation, 21 begin with a connective and
+depend on context outside the sentence, and 6 are long comma-spliced runs. The
+agreed annotation rules (D15) cover all three so the annotators handle them
+identically rather than disagreeing by convention.
+
+Raw collected text is **gitignored** (`data_manual/manual_sentences.txt`), as
+are the two in-progress annotation files. Only the curated TSV is tracked.
+
 ## Open issues
 
 - [ ] `Downloads/CLAUDE.md` and `Downloads/PROJECT_SPEC.md` are stray byte-identical copies.
       The one at the `Downloads` root applies this project's instructions to the **entire**
       Downloads tree. Worth deleting — **ask the user first** (spec §2.4).
-- [ ] The group must write ~150 Indian English sentences with two independent annotators.
+- [ ] **Annotation of the 149 imported sentences has not started.** Both annotators edit
+      their own gitignored file (`data_manual/annotation/annotator{1,2}.tsv`), then
+      `--merge-annotations` copies the result in. E5 stays `TBD` until >= 20 rows have
+      BOTH columns filled.
+- [ ] (superseded) The group must write ~150 Indian English sentences with two independent annotators.
       Template ships in Phase 8a; E5 stays `TBD` until >= 20 **fully annotated** rows
       exist. Sources may be committed before annotation: such rows report as
       "pending annotation", not as errors, and do not count toward the threshold.

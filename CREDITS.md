@@ -48,11 +48,26 @@ The clean sentence pool that the error generator corrupts.
 
 ### Indian English test set (ours)
 
-Written by hand by the group (`data_manual/indian_english_test.tsv`). The repo
-ships the template, the validator, the agreement tooling and five rows whose
-ids begin `EXAMPLE-` demonstrating the format; those are excluded from every
-computation. The ~150 real items and both independent annotations are the
-group's own work.
+`data_manual/indian_english_test.tsv`. 149 sentences, **manually collected from
+public Indian subreddits** by the group and copied by hand; **usernames and
+links are not stored**, and the raw collected file
+(`data_manual/manual_sentences.txt`) is gitignored. Provenance is recorded per
+row only as a writer id and post label (e.g. `W11 flat-hunting`) in the
+`source_note` column.
+
+Selection was done by humans: the group chose which sentences to include, and
+both independent annotations are the group's own work. Claude Code supplied the
+template, the importer, the validator and the agreement tooling, plus five rows
+whose ids begin `EXAMPLE-` demonstrating the format; those are excluded from
+every computation.
+
+28 rows come from posts the group marked `[sensitive]` and carry
+`notes = "sensitive: do not quote in report"`. Their text is used as evaluation
+data but must not be quoted in the report or surfaced in the demo.
+
+The source text originates from Reddit users writing in public. It is used here
+as research data under academic fair use, with no attribution to individuals and
+no redistribution of identifiers.
 
 ---
 
@@ -128,11 +143,19 @@ the group's hardware, and every number reported in `results/RESULTS.md` and in
 the Activity 2 report was produced by running this code — none was supplied by
 the model.
 
-Per the project's own rules, Claude Code did **not** write the Indian English
-test sentences: it produced only the TSV template, the validation and
-agreement tooling, and five rows marked `EXAMPLE-` that demonstrate the
-format. The ~150 real items and both sets of independent annotations are the
-group's work, which is what keeps E5 a human-made evaluation set.
+Per the project's own rules, Claude Code did **not** write, choose, correct or
+annotate any Indian English test sentence. It produced the TSV template, the
+importer, the validator, the agreement tooling, the per-annotator edit files,
+and five rows marked `EXAMPLE-` that demonstrate the format. The 149 real items
+were collected and selected by the group from public posts, and both sets of
+independent annotations are the group's work - which is what keeps E5 a
+human-made evaluation set.
+
+The importer applies exactly one text transformation, curly quotes and
+apostrophes to straight ones, because T5's SentencePiece vocabulary cannot
+represent the curly forms. Typos, spacing, capitalisation, exclamation marks,
+slashes and brackets are all preserved verbatim; a test asserts the imported
+sources round-trip identically to the collected file.
 
 The group's Activity 1 report (`IA1_REPORT_GEC.md`), the research question and
 the experimental design in `PROJECT_SPEC.md` are the group's own.

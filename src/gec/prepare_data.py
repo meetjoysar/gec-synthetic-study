@@ -730,6 +730,8 @@ def prepare_indian(tsv: Path | None = None) -> dict:
                 "n_annotators": 2,
                 "src_len": len(s.split()),
                 "category": str(real.iloc[i].get("category", "")),
+                # Provenance, so RESULTS.md can break E5 down by source_type.
+                "source_type": str(real.iloc[i].get("source_type", "")),
             }
         )
     paths.write_jsonl(files["jsonl"], rows)

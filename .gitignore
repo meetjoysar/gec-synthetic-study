@@ -40,6 +40,13 @@ __pycache__/
 # ---- course PDFs: kept on disk, not in git (third-party copyright; cited in CREDITS.md) ----
 *.pdf
 
+# ---- raw collected sentences and in-progress annotation (never committed) ----
+# The sentences themselves are third-party text copied from public posts; only
+# the curated TSV (no usernames, no links) is tracked.
+data_manual/manual_sentences.txt
+data_manual/candidates.tsv
+data_manual/annotation/
+
 # ---- scratch ----
 .extract/
 scratch/

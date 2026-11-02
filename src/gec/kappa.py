@@ -30,7 +30,14 @@ from pathlib import Path
 
 from gec import paths, tok
 
-COLUMNS = ["id", "source", "annotator1", "annotator2", "category", "notes"]
+#: The six columns spec section 5.5 defines.
+REQUIRED_COLUMNS = ["id", "source", "annotator1", "annotator2", "category", "notes"]
+
+#: Provenance columns added for the manually collected sentences. Optional, so
+#: a hand-made TSV with only the six required columns still validates.
+OPTIONAL_COLUMNS = ["source_type", "source_note"]
+
+COLUMNS = REQUIRED_COLUMNS + OPTIONAL_COLUMNS
 
 #: Spec section 5.5's suggested categories. Unknown values warn rather than fail,
 #: because the group may legitimately discover a new error pattern.
@@ -108,9 +115,12 @@ def validate(df) -> list[str]:
     """Return a list of human-readable problems (empty means the file is fine)."""
     problems: list[str] = []
 
-    missing = [c for c in COLUMNS if c not in df.columns]
+    missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing:
-        problems.append(f"missing column(s): {missing}; expected exactly {COLUMNS}")
+        problems.append(
+            f"missing required column(s): {missing}; expected {REQUIRED_COLUMNS} "
+            f"(plus the optional {OPTIONAL_COLUMNS})"
+        )
         return problems
     extra = [c for c in df.columns if c not in COLUMNS]
     if extra:
@@ -288,6 +298,10 @@ def report(tsv: Path | str, out: Path | str | None = None, strict: bool = False)
         "n_changed_by_annotator1": sum(sent_a),
         "n_changed_by_annotator2": sum(sent_b),
         "categories": dict(real["category"].value_counts()),
+        "source_types": (
+            dict(real["source_type"].replace("", "unspecified").value_counts())
+            if "source_type" in real.columns else {}
+        ),
     }
     payload.update(_kappa(tok_a, tok_b, "token"))
     payload.update(_kappa(sent_a, sent_b, "sentence"))
@@ -316,9 +330,28 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default=None)
     ap.add_argument("--strict", action="store_true",
                     help="exit non-zero if the TSV has any (non-warning) problem")
+    ap.add_argument("--import-manual", metavar="FILE", default=None,
+                    help="append manually collected sentences (see indian_import.py)")
+    ap.add_argument("--make-annotation-files", action="store_true",
+                    help="write data_manual/annotation/annotator{1,2}.tsv")
+    ap.add_argument("--merge-annotations", action="store_true",
+                    help="copy the annotators' corrections back into the TSV")
+    ap.add_argument("--force", action="store_true",
+                    help="allow overwriting non-empty annotation cells")
+    ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
     tsv = Path(args.tsv) if args.tsv else paths.DATA_MANUAL / "indian_english_test.tsv"
+
+    from gec import indian_import
+
+    if args.import_manual:
+        indian_import.import_manual(args.import_manual, tsv, dry_run=args.dry_run)
+    if args.make_annotation_files:
+        indian_import.make_annotation_files(tsv, force=args.force)
+    if args.merge_annotations:
+        indian_import.merge_annotations(tsv, force=args.force)
+
     if not tsv.exists():
         print(f"[kappa] {paths.rel(tsv)} not found")
         return 1

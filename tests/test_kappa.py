@@ -132,24 +132,41 @@ def test_literal_na_is_not_turned_into_nan(tmp_path):
 # The shipped template
 # --------------------------------------------------------------------------- #
 
-def test_shipped_template_is_valid_and_has_only_example_rows():
+def test_shipped_tsv_is_valid():
+    """The committed TSV must validate, whatever stage of annotation it is at."""
     tsv = paths.DATA_MANUAL / "indian_english_test.tsv"
     all_rows, ready = kappa.load_indian_tsv(tsv)
-    assert len(all_rows) == 5, "spec 2.3 allows at most 5 EXAMPLE- rows"
-    assert all(str(i).startswith("EXAMPLE-") for i in all_rows["id"])
-    assert len(ready) == 0, "no real rows yet; the group writes those"
+
+    examples = all_rows[all_rows["id"].str.startswith(kappa.EXAMPLE_PREFIX)]
+    assert len(examples) <= 5, "spec 2.3 allows at most 5 EXAMPLE- rows"
+    assert len(examples) > 0, "the format demonstration rows must survive"
+    # Every EXAMPLE row ships complete.
+    assert (examples["annotator1"] != "").all()
+    assert (examples["annotator2"] != "").all()
+
+    # Real rows are either fully annotated or pending; never half-done in a way
+    # that would reach errant_parallel.
+    n_ready, n_pending = kappa.pending_count(tsv)
+    assert len(ready) == n_ready
+
     problems = [x for x in kappa.validate(all_rows)
                 if not x.startswith(("WARNING", "PENDING"))]
     assert problems == [], problems
 
 
-def test_report_skips_gracefully_on_the_template(tmp_path):
+def test_report_skips_gracefully_until_annotation_is_done(tmp_path):
+    """Until >= 20 rows are FULLY annotated, E5 must skip rather than crash."""
     out = tmp_path / "kappa.json"
-    payload = kappa.report(paths.DATA_MANUAL / "indian_english_test.tsv", out)
-    assert payload["skipped"] is True
-    assert payload["n_real_rows"] == 0
-    assert payload["n_pending_annotation"] == 0
-    assert paths.read_json(out)["skipped"] is True
+    tsv = paths.DATA_MANUAL / "indian_english_test.tsv"
+    n_ready, n_pending = kappa.pending_count(tsv)
+    payload = kappa.report(tsv, out)
+    assert payload["n_real_rows"] == n_ready
+    assert payload["n_pending_annotation"] == n_pending
+    if n_ready < kappa.MIN_REAL_ROWS:
+        assert payload["skipped"] is True
+        assert paths.read_json(out)["skipped"] is True
+    else:
+        assert payload["skipped"] is False
 
 
 def test_report_counts_pending_rows_in_its_payload(tmp_path):

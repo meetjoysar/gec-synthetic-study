@@ -400,6 +400,35 @@ def table_e5_indian(rows: list[dict]) -> Path | None:
             )
         lines.append("")
 
+    # Per-source_type breakdown. The collected set mixes sentences that carry a
+    # real error with sentences the annotators judged acceptable, so the
+    # headline number alone hides two different questions: can the model fix
+    # genuine Indian English errors, and does it wrongly "correct" usage that
+    # was already fine?
+    jsonl = paths.PROCESSED / "indian.jsonl"
+    if have and jsonl.exists():
+        rows_j = paths.read_jsonl(jsonl)
+        by_type: dict[str, int] = {}
+        for r in rows_j:
+            by_type[r.get("source_type") or "unspecified"] = (
+                by_type.get(r.get("source_type") or "unspecified", 0) + 1
+            )
+        n_clean = sum(1 for r in rows_j if r.get("is_clean"))
+        lines += [
+            "## Composition of the Indian English set", "",
+            f"- sentences: **{len(rows_j)}**",
+            f"- both annotators left unchanged (control / acceptable usage): "
+            f"**{n_clean}** ({n_clean / max(len(rows_j), 1):.0%})",
+            "- by `source_type`: "
+            + ", ".join(f"`{k}` {v}" for k, v in sorted(by_type.items())),
+            "",
+            "Over-correction in the table above is measured on the control "
+            "sentences only - those both annotators judged acceptable as "
+            "written. It answers whether the model imposes a prescriptive "
+            "standard on a legitimate variety of English.",
+            "",
+        ]
+
     if kappa and not kappa.get("skipped"):
         lines += [
             "## Annotator agreement", "",
