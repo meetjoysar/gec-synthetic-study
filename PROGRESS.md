@@ -127,7 +127,7 @@ Recorded as they happen, per spec section 13.
 
 | # | Spec says | We do | Why |
 |---|---|---|---|
-| D1 | Repo named `gec-synthetic-study/` (§4) | Repo root **is** `IA/gec-synthetic-study/`; `CLAUDE.md`, `PROJECT_SPEC.md`, `IA1_REPORT_GEC.md` are **copies**, the originals stay in `IA/` | User chose the subfolder layout. The repo must be self-contained to be reproducible. |
+| D1 | Repo named `gec-synthetic-study/` (§4) | Repo root **is** `IA/gec-synthetic-study/`; `CLAUDE.md`, `PROJECT_SPEC.md`, `IA1_REPORT_GEC.md` are **copies**, the originals stay in `IA/` | User chose the subfolder layout. The repo must be self-contained to be reproducible. `IA1_REPORT_GEC.md` is now **gitignored** (Activity 1 submission, kept on disk for reference), as is `HOW_TO_RUN.md` (hardcodes this machine's interpreter path). |
 | D2 | `errant` "installs spaCy and `en_core_web_sm`" (§3) | `python -m spacy download en_core_web_sm` run separately | **The spec is wrong for errant 3.x.** `errant==3.0.2` depends only on `spacy>=3.2,<4` and `rapidfuzz`; it does not pull the model. Also means the feared spaCy version conflict does not exist. |
 | D3 | — | Added `src/gec/errant_cli.py` and `src/gec/repro.py` beyond the §4 module list | Each has >=3 consumers. Keeping ERRANT behind a subprocess wrapper means `train.py` never imports spaCy. |
 | ~~D4~~ | `data.synthetic_n: 50000`, `epochs: 3` (§8.1) | **WITHDRAWN** — spec values restored | Was trimmed to 30000/2 on an *analytical* estimate of 55 examples/s. The timing probe measured **161.5/s** (2.9× better) after batch tuning, so the full setting is affordable. No longer a deviation. |
@@ -779,40 +779,55 @@ suites, no `aggregate`, and no CPU model loading while a run is in flight -
 
 ## Open issues
 
-- [ ] `Downloads/CLAUDE.md` and `Downloads/PROJECT_SPEC.md` are stray byte-identical copies.
-      The one at the `Downloads` root applies this project's instructions to the **entire**
-      Downloads tree. Worth deleting — **ask the user first** (spec §2.4).
-- [x] (partly closed) **Annotator 1 has annotated all 149 sentences**; merged in via
-      `--merge-annotations`. E5 scores against this single reference, which is enough to
-      run. **Still open: a second independent annotator**, needed only for Cohen's kappa
-      (spec section 5.5). No rework when it arrives - `kappa.py` detects the second column
-      and the number appears on the next `aggregate`.
-- [ ] (superseded) The group must write ~150 Indian English sentences with two independent annotators.
-      Template ships in Phase 8a; E5 stays `TBD` until >= 20 **fully annotated** rows
-      exist. Sources may be committed before annotation: such rows report as
-      "pending annotation", not as errors, and do not count toward the threshold.
-      A harvesting collector (candidates from an open Reddit dataset) was considered
-      and **dropped**: `SocialGrep/one-year-of-r-india` ships only a loading script
-      whose data host (`exports.socialgrep.com`) no longer resolves in DNS, and
-      `datasets 4.0.0` cannot execute remote loading scripts in any case. The set
-      stays group-written, exactly as spec section 5.5 intends.
-- [x] (closed) GPU campaign approved after the `--timing-probe` numbers were restated.
-      Measured 161.5 examples/s at 16x2, so the budget trims were withdrawn and the
+Current as of **2 November 2026**, after the full campaign finished.
+Nothing below blocks the submission.
+
+### Still open
+
+- [ ] **A second independent annotator for the Indian English set.** Annotator 1 has
+      corrected all 149 rows and is merged in, so E5 scores normally against that single
+      reference. Only **Cohen's kappa** needs the second column (spec section 5.5), and
+      `kappa.py` reports it as undefined with an explanation rather than printing a
+      meaningless number. No rework when it arrives: annotator 2 fills
+      `data_manual/annotation/annotator2.tsv`, then
+      `--merge-annotations` -> `python -m gec.kappa` -> `python -m gec.aggregate`.
+- [ ] **E4 at three seeds (~1.5 h GPU) is the highest-value follow-on.** Both E4 arms are
+      seed 13 only, and E3's three seeds measured the noise floor at ~0.02 F0.5. E4's
+      in-domain penalties (-0.0219 synthetic-only, -0.0108 mixed) sit either side of it,
+      and its Indian English claim is a quarter of `e3_mixed`'s 0.0417 out-of-domain
+      spread - which is why that claim is withdrawn rather than reported.
+      `--plan e4 --seeds 42 2026 --yes` adds them without redoing anything.
+- [ ] **E1, E2 and E5 remain single-seed**, as spec section 7's budget mode prescribes.
+      E1's p = 0.2 vs p = 0.4 (0.0007 apart) was already called noise in the E1 section.
+      E1 and E2's headline trends are monotonic across four points each and much larger
+      than the spread, so extra seeds would not change them.
+- [ ] **Verb errors are structurally hard for the generator to produce**: 15.8% of real
+      W&I edits vs 4.2% synthetic, and only ~4.5% even after pre-compensation. Worth one
+      paragraph in the report - part of the synthetic-only shortfall is a generator
+      coverage limit, not evidence about synthetic data in principle.
+- [ ] **22.6% of real W&I edits are in categories the generator cannot produce at all**
+      (WO, MORPH, NOUN:POSS, CONTR, VERB:INFL). That ceiling bounds what synthetic-only
+      training can reach here, and it is also why E4's TVD is computed over the ten
+      covered categories only.
+
+### Closed
+
+- [x] **Stray `CLAUDE.md` / `PROJECT_SPEC.md` copies in `Downloads/`** - deleted manually
+      by the group. The copy at the `Downloads` root had been applying this project's
+      instructions to the entire Downloads tree.
+- [x] **The Indian English set exists**: 149 sentences, hand-collected by the group from
+      public Indian subreddits, no usernames or links stored. A harvesting collector was
+      considered and **dropped** - `SocialGrep/one-year-of-r-india` ships only a loading
+      script whose data host (`exports.socialgrep.com`) no longer resolves, and
+      `datasets 4.0.0` cannot execute remote loading scripts anyway. The set stays
+      group-written, exactly as spec section 5.5 intends.
+- [x] **GPU campaign approved** after the `--timing-probe` numbers were restated:
+      161.5 examples/s at batch 16 x accum 2, so the budget trims were withdrawn and the
       campaign ran spec-faithful (50k pairs, 3 epochs).
-- [ ] Verb errors are structurally hard for the generator to produce (15.8% real vs 4.2%
-      synthetic, and only ~4.5% even after pre-compensation). Worth one paragraph in the
-      report: part of any synthetic-only shortfall is a generator-coverage limit, not
-      evidence about synthetic data in principle.
-- [ ] The generator covers 10 ERRANT categories; **22.6% of real W&I edits are in
-      categories it cannot produce at all** (WO, MORPH, NOUN:POSS, CONTR, VERB:INFL).
-      That ceiling bounds what synthetic-only training can achieve here.
-- [x] (closed) E3 now has **three seeds** (13, 42, 2026). Both differences flagged here
-      were indeed inside the spread, and one of them *reversed*: mixed vs real on Indian
-      English went +0.0131, -0.0160, -0.0286. The measured threshold is that effects
-      below ~0.02 F0.5 are not resolvable at this scale. See the E3 section.
-- [ ] **E1, E2, E4 and E5 remain single-seed** (seed 13), which is what spec section 7's
-      budget mode prescribes. E3's spread now gives the scale to read them against, and
-      two of their conclusions sit close to it: E1's p = 0.2 vs p = 0.4 (0.0007 apart,
-      already called noise) and E4's mixed arm (-0.0108). **E4 at three seeds (~1.5 h)
-      is the single highest-value follow-on**; E1/E2's headline trends are monotonic
-      across four points each and far larger than the spread, so they do not need it.
+- [x] **E3 at three seeds** (13, 42, 2026). Both differences previously flagged as
+      fragile were inside the spread, and one *reversed*: mixed vs real on Indian English
+      went +0.0131, -0.0160, -0.0286. Measured threshold: effects below ~0.02 F0.5 are
+      not resolvable at this scale. See the E3 section. Deviation D6 withdrawn.
+- [x] **Every number in `RESULTS.md` is independently re-checked** -
+      `scripts/audit_results.py` verifies 200 of them against the per-seed
+      `metrics.json` files without going through `aggregate.py`.

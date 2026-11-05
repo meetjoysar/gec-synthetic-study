@@ -8,7 +8,7 @@ K. J. Somaiya School of Engineering
 Group: Suryoday Kumar Saroj (16030726001), Aryan Gole (16030726006), Meet P Joysar (16030726016)
 Faculty: Dr. Grishma Sharma
 
-> **Just want to run the demo?** Read **[HOW_TO_RUN.md](HOW_TO_RUN.md)** instead - a step-by-step walkthrough with the exact commands for this machine, what you should see after each one, and a troubleshooting table.
+> **Just want to run the demo?** Read **`HOW_TO_RUN.md`** in this folder instead - a step-by-step walkthrough with the exact commands, what you should see after each one, and a troubleshooting table. It is deliberately **not** in version control: it hardcodes this machine's interpreter path, which would be wrong on anyone else's. The install and reproduce sections below are the portable version.
 
 ---
 
@@ -133,27 +133,85 @@ RTX 3050 in bf16; Colab's value is a second machine, not a speedup.
 
 ## How it works
 
+```mermaid
+flowchart TD
+    WI["W&I + LOCNESS v2.1<br/>34,308 annotated<br/>learner sentences"]
+    WT["WikiText-103<br/>streamed, filtered to<br/>60,000 clean sentences"]
+    DM["data_manual/<br/>149 Indian English sentences<br/>hand-collected by the group"]
+
+    subgraph S1["1 · Data preparation — CPU"]
+        direction TB
+        PD["prepare_data.py"]
+        SP["data/processed/<br/>train_real · val · test · indian<br/>each as .m2 + .src.txt + .tgt.txt + .jsonl<br/>identical sentence order in all four"]
+        CP["clean_pool.jsonl<br/>tokens + POS + lemma cache<br/>50k base · 10k held back for E4"]
+        PD --> SP
+        PD --> CP
+    end
+
+    subgraph S2["2 · Synthetic errors — CPU"]
+        direction TB
+        EG["error_gen.py<br/>15 operations over<br/>10 ERRANT categories"]
+        PAIR["noisy / clean pairs<br/>src = noisy, tgt = clean"]
+        EG --> PAIR
+    end
+
+    subgraph S3["3 · Training — GPU"]
+        direction TB
+        BD["build_datasets.py<br/>one dataset per condition,<br/>hashed so reuse is safe"]
+        COND["synthetic-only · real-only<br/>mixed · synth-then-real"]
+        TR["train.py<br/>t5-small · bf16 · 3 epochs<br/>effective batch 32"]
+        CK["model/<br/>231 MB checkpoint"]
+        BD --> COND --> TR --> CK
+    end
+
+    subgraph S4["4 · Scoring — CPU"]
+        direction TB
+        PR["predict.py<br/>beam 4, length-bucketed,<br/>then retokenise"]
+        EP["errant_parallel<br/>-orig src -cor pred"]
+        HYP["predictions/split.hyp.m2"]
+        EC["errant_compare -cat 2<br/>hypothesis vs the gold .m2"]
+        MJ["metrics.json<br/>P · R · F0.5 · two BLEUs<br/>over-correction · per-category CSV"]
+        PR --> EP --> HYP --> EC --> MJ
+    end
+
+    subgraph S5["5 · Reporting — CPU"]
+        direction TB
+        AG["aggregate.py<br/>left-joins the expected grid<br/>onto what exists on disk"]
+        OUT["RESULTS.md<br/>6 figures · 12 tables"]
+        AU["scripts/audit_results.py<br/>re-checks all 200 numbers<br/>without using aggregate.py"]
+        AG --> OUT
+    end
+
+    WI --> PD
+    DM --> PD
+    WT --> PD
+    CP --> EG
+    SP -->|real pairs| BD
+    PAIR -->|synthetic pairs| BD
+    CK --> PR
+    SP -->|split.src.txt| PR
+    SP -->|gold split.m2| EC
+    MJ --> AG
+    OUT -.->|verify| AU
+    MJ -.-> AU
 ```
-data/processed/<split>.{m2,src.txt,tgt.txt,jsonl}   <- prepare_data.py
-   |  (all five files in IDENTICAL sentence order)
-   v
-build_datasets.py  --> a training JSONL of {id, src, tgt, origin}
-   |
-   v
-train.py  --> results/runs/<run>/seed<k>/model/
-   |
-   v
-predict.py --> predictions/<split>.{src,pred}.txt
-   |  errant_parallel -orig src -cor pred
-   v
-predictions/<split>.hyp.m2
-   |  errant_compare -hyp ... -ref data/processed/<split>.m2 -cat 2
-   v
-metrics.json + per_category.csv   <- evaluate.py
-   |
-   v
-aggregate.py --> results/{tables,figures}/ + RESULTS.md
-```
+
+Read it as five stages, each a different kind of work:
+
+| Stage | Cost | Produces |
+|---|---|---|
+| 1. Data preparation | ~15 min CPU, once | the four splits and the POS-tagged clean pool |
+| 2. Synthetic errors | seconds per dataset | noisy/clean training pairs |
+| 3. Training | 9–28 min per run on an RTX 3050 | one checkpoint |
+| 4. Scoring | ~11 min per run | `metrics.json`, the only thing the report reads |
+| 5. Reporting | seconds | `RESULTS.md`, figures, tables — plus an independent audit |
+
+Two properties of this pipeline matter more than the rest of it put together.
+**ERRANT is the only scorer**, driven through its own CLI rather than
+reimplemented, so our numbers are comparable with published GEC work. And
+**`metrics.json` is the single source of truth**: nothing downstream of stage 4
+ever recomputes a score, which is what makes the stage-5 audit meaningful
+rather than circular.
 
 ### Things worth knowing before you change anything
 
@@ -185,9 +243,10 @@ auditable.
 `scripts/audit_results.py` parses the rendered `RESULTS.md`, re-reads each
 `metrics.json` (following `alias_of` pointers), and compares every cell -
 without going through `aggregate.py` at all. It also verifies that every linked
-figure and table exists. It currently checks **126 numbers** and exits non-zero
-on any mismatch; `tests/test_audit_results.py` doctors single cells to prove
-the auditor can actually fail.
+figure and table exists. It currently checks **200 numbers** - including the
+three-seed means, the paired deltas and the same-sign column - and exits
+non-zero on any mismatch; `tests/test_audit_results.py` doctors single cells to
+prove the auditor can actually fail.
 
 **No module calls bare `open()`.** Python 3.10 on Windows defaults to cp1252
 and the W&I essays are full of curly quotes and accents. Everything goes

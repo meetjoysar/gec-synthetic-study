@@ -54,3 +54,13 @@ scratch/
 ~$*
 Thumbs.db
 desktop.ini
+
+# ---- local-only docs (machine-specific paths / group's own Activity 1 report) ----
+# HOW_TO_RUN.md hardcodes this machine's interpreter path, so it is kept on disk
+# rather than committed. IA1_REPORT_GEC.md is the group's Activity 1 submission,
+# carried here for reference only.
+HOW_TO_RUN.md
+IA1_REPORT_GEC.md
+
+# ---- gradio runtime cache ----
+.gradio/

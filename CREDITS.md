@@ -161,6 +161,3 @@ apostrophes to straight ones, because T5's SentencePiece vocabulary cannot
 represent the curly forms. Typos, spacing, capitalisation, exclamation marks,
 slashes and brackets are all preserved verbatim; a test asserts the imported
 sources round-trip identically to the collected file.
-
-The group's Activity 1 report (`IA1_REPORT_GEC.md`), the research question and
-the experimental design in `PROJECT_SPEC.md` are the group's own.
