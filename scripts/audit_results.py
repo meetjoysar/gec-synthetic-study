@@ -4,8 +4,8 @@
 
     python scripts/audit_results.py          # exits non-zero on any mismatch
 
-``CLAUDE.md`` rule: *never invent results; every reported number must come from
-a file our code wrote.* ``aggregate.py`` is written to honour that, but the
+Spec section 2, rule 1: *never invent results; every reported number must come
+from a file our code wrote.* ``aggregate.py`` is written to honour that, but the
 claim is only worth as much as an independent check of it, so this script
 re-reads the main table out of the rendered Markdown and compares every cell
 against the ``metrics.json`` it is supposed to have come from - without going

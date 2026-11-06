@@ -187,7 +187,7 @@ def validate_config(cfg: dict, base: dict | None = None) -> None:
             "producing a duplicate run."
         )
 
-    # T5 is unstable in fp16 (spec section 3 / CLAUDE.md). Make it impossible.
+    # T5 is unstable in fp16 (spec section 3). Make it impossible.
     prec = str(cfg.get("precision", "auto")).lower()
     if prec in ("fp16", "float16", "half", "16"):
         raise ConfigError(

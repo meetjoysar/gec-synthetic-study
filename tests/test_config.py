@@ -81,7 +81,7 @@ def test_validate_allows_freeform_weight_names():
 
 
 def test_fp16_is_forbidden():
-    """CLAUDE.md: never fp16 for T5. Make it impossible, not merely discouraged."""
+    """Spec section 3: never fp16 for T5. Impossible, not merely discouraged."""
     base = cfgmod.load_yaml(paths.CONFIGS / "base.yaml")
     for value in ("fp16", "float16", "half"):
         with pytest.raises(cfgmod.ConfigError, match="fp16 is forbidden"):

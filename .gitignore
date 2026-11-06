@@ -61,6 +61,7 @@ desktop.ini
 # carried here for reference only.
 HOW_TO_RUN.md
 IA1_REPORT_GEC.md
+CLAUDE.md
 
 # ---- gradio runtime cache ----
 .gradio/

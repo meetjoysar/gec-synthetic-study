@@ -14,7 +14,7 @@
 ``<split>.hyp.m2`` for the ERRANT step), so a crash during evaluation does not
 re-run training or generation. A Colab disconnect costs at most one run.
 
-**The budget gate encodes CLAUDE.md's rule in code.** Nothing longer than
+**The budget gate encodes the spec's rule in code.** Nothing longer than
 ``--budget-minutes`` (default 15) starts without ``--yes``, and the estimate is
 printed first. Every real plan here trips it, which is the point: it forces an
 explicit, informed decision each time rather than one blanket approval.
@@ -537,7 +537,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--timing-probe", action="store_true",
                     help="measure throughput (~10 min) and write timing_probe.json")
     ap.add_argument("--budget-minutes", type=float, default=15.0,
-                    help="refuse to start a longer plan without --yes (CLAUDE.md rule)")
+                    help="refuse to start a longer plan without --yes (spec section 2, rule 4)")
     ap.add_argument("--yes", action="store_true", help="approve the estimated runtime")
     ap.add_argument("--force", action="store_true", help="re-run jobs that are already done")
     ap.add_argument("--continue-on-error", action="store_true")
@@ -590,7 +590,8 @@ def main(argv: list[str] | None = None) -> int:
             f"\nRefusing to start: estimated {overall_total:.0f} min "
             f"({overall_total / 60:.1f} h) exceeds --budget-minutes "
             f"{args.budget_minutes:.0f}.\n"
-            "CLAUDE.md requires asking before runs over ~15 minutes. "
+            "Spec section 2, rule 4 requires asking before runs over ~15 "
+            "minutes. "
             "Re-run with --yes once you have approved the time."
         )
         return 2
